@@ -25,5 +25,6 @@ class LLMClient(Protocol):
         presenting_next: bool,
         allowed_help_level: int,
         tier: str = "hard",
+        context: dict[str, Any] | None = None,
     ) -> LLMResponse:
         ...

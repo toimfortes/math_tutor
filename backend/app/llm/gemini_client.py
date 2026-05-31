@@ -36,6 +36,7 @@ class GeminiLLMClient:
         presenting_next: bool,
         allowed_help_level: int,
         tier: str = "hard",
+        context: dict[str, Any] | None = None,
     ) -> LLMResponse:
         model = self._model_for_tier(tier)
         response = (self.transport or UrllibJSONTransport()).post_json(
@@ -49,6 +50,7 @@ class GeminiLLMClient:
                 diagnostic=diagnostic,
                 presenting_next=presenting_next,
                 allowed_help_level=allowed_help_level,
+                context=context,
             ),
             timeout_seconds=self.timeout_seconds,
         )
@@ -61,6 +63,7 @@ class GeminiLLMClient:
         diagnostic: DiagnosticResult | None,
         presenting_next: bool,
         allowed_help_level: int,
+        context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         return {
             "systemInstruction": {
@@ -76,6 +79,7 @@ class GeminiLLMClient:
                                 diagnostic=diagnostic,
                                 presenting_next=presenting_next,
                                 allowed_help_level=allowed_help_level,
+                                context=context,
                             )
                         }
                     ],
@@ -160,6 +164,7 @@ def _turn_context_text(
     diagnostic: DiagnosticResult | None,
     presenting_next: bool,
     allowed_help_level: int,
+    context: dict[str, Any] | None = None,
 ) -> str:
     diagnostic_payload = None
     if diagnostic is not None:
@@ -169,16 +174,16 @@ def _turn_context_text(
             "matched_pattern": diagnostic.matched_pattern,
             "safe_hint_level_cap": diagnostic.safe_hint_level_cap,
         }
-    return json.dumps(
-        {
+    payload: dict[str, Any] = {
             "check_result": check_result,
             "diagnostic": diagnostic_payload,
             "presenting_next": presenting_next,
             "allowed_help_level": allowed_help_level,
             "instruction": "Return one JSON tutor turn matching the configured response schema.",
-        },
-        sort_keys=True,
-    )
+    }
+    if context:
+        payload["context"] = context
+    return json.dumps(payload, sort_keys=True)
 
 
 def _parse_generate_content_response(response: dict[str, Any]) -> LLMResponse:

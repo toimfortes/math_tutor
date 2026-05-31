@@ -70,6 +70,7 @@ class AnthropicLLMClient:
         presenting_next: bool,
         allowed_help_level: int,
         tier: str = "hard",
+        context: dict[str, Any] | None = None,
     ) -> LLMResponse:
         response = (self.transport or UrllibJSONTransport()).post_json(
             url=self.api_url,
@@ -84,6 +85,7 @@ class AnthropicLLMClient:
                 presenting_next=presenting_next,
                 allowed_help_level=allowed_help_level,
                 tier=tier,
+                context=context,
             ),
             timeout_seconds=self.timeout_seconds,
         )
@@ -97,6 +99,7 @@ class AnthropicLLMClient:
         presenting_next: bool,
         allowed_help_level: int,
         tier: str,
+        context: dict[str, Any] | None,
     ) -> dict[str, Any]:
         return {
             "model": self._model_for_tier(tier),
@@ -110,6 +113,7 @@ class AnthropicLLMClient:
                         diagnostic=diagnostic,
                         presenting_next=presenting_next,
                         allowed_help_level=allowed_help_level,
+                        context=context,
                     ),
                 }
             ],
@@ -191,6 +195,7 @@ def _turn_context_text(
     diagnostic: DiagnosticResult | None,
     presenting_next: bool,
     allowed_help_level: int,
+    context: dict[str, Any] | None = None,
 ) -> str:
     diagnostic_payload = None
     if diagnostic is not None:
@@ -200,16 +205,16 @@ def _turn_context_text(
             "matched_pattern": diagnostic.matched_pattern,
             "safe_hint_level_cap": diagnostic.safe_hint_level_cap,
         }
-    return json.dumps(
-        {
+    payload: dict[str, Any] = {
             "check_result": check_result,
             "diagnostic": diagnostic_payload,
             "presenting_next": presenting_next,
             "allowed_help_level": allowed_help_level,
             "instruction": "Call emit_tutor_turn with the next public tutoring response.",
-        },
-        sort_keys=True,
-    )
+    }
+    if context:
+        payload["context"] = context
+    return json.dumps(payload, sort_keys=True)
 
 
 def _parse_tool_response(response: dict[str, Any]) -> LLMResponse:

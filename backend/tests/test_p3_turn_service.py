@@ -1,4 +1,5 @@
 from backend.app.content.seed_loader import RealizedProblemRef, load_gold_problem_bank
+from backend.app.llm.types import LLMResponse
 from backend.app.llm.mock_client import MockLLMClient
 from backend.app.services.turn import InMemoryTurnStore, TurnService
 
@@ -66,3 +67,45 @@ def test_wrong_answer_uses_diagnostic_tag_and_does_not_advance_problem():
     assert response.diagnostic.student_error_tag == "inverted_slope"
     assert response.public_problem.ref == RealizedProblemRef("lf_p04", "neutral")
     assert response.pedagogical_move == "rectify_error"
+
+
+def test_turn_service_passes_public_context_without_private_answer_to_llm():
+    class RecordingLLM(MockLLMClient):
+        def __init__(self):
+            self.calls = []
+
+        def generate(self, **kwargs):
+            self.calls.append(kwargs)
+            return LLMResponse(
+                dialogue="Here is the next problem.",
+                pedagogical_move="present_next_problem" if kwargs["presenting_next"] else "offer_heuristic_hint",
+                ui_mode="chat",
+                proposed_hint_level=0,
+                teacher_check={
+                    "student_error_tag": "unknown",
+                    "next_scaffold_id": "level_0",
+                    "leak_risk": "none",
+                    "uses_only_authored_scaffold": True,
+                    "chosen_pedagogical_move": "present_next_problem"
+                    if kwargs["presenting_next"]
+                    else "offer_heuristic_hint",
+                },
+            )
+
+    llm = RecordingLLM()
+    service = TurnService(
+        problem_bank=load_gold_problem_bank(),
+        llm_client=llm,
+        store=InMemoryTurnStore(),
+    )
+
+    start = service.start_session(student_id="student-1", theme="space_logistics")
+    service.submit_turn(start.session_id, idempotency_key="wrong", answer="not parseable")
+
+    start_context = llm.calls[0]["context"]
+    turn_context = llm.calls[1]["context"]
+    assert start_context["public_problem"]["prompt"] == start.public_problem.prompt
+    assert turn_context["public_problem"]["prompt"] == start.public_problem.prompt
+    assert "canonical_answer" not in str(start_context)
+    assert "canonical_answer" not in str(turn_context)
+    assert "private_problem" not in str(turn_context)

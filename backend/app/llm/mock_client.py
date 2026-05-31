@@ -13,6 +13,7 @@ class MockLLMClient:
         presenting_next: bool,
         allowed_help_level: int,
         tier: str = "hard",
+        context: dict | None = None,
     ) -> LLMResponse:
         if presenting_next:
             return LLMResponse(

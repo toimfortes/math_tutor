@@ -40,6 +40,21 @@ def test_guardrails_clamp_hint_level_and_block_false_mastery_claim():
     assert set(guarded.guardrail_fires) >= {"hint_ceiling", "false_mastery_claim", "answer_leak"}
 
 
+def test_guardrails_allow_refusal_to_change_mastery_status():
+    guarded = apply_guardrails(
+        GuardrailInput(
+            dialogue="I cannot change your mastery status or XP directly.",
+            pedagogical_move="offer_heuristic_hint",
+            proposed_hint_level=0,
+            allowed_help_level=1,
+            canonical_answer="7",
+            concept_mastered=False,
+        )
+    )
+
+    assert "false_mastery_claim" not in guarded.guardrail_fires
+
+
 def test_turn_service_guardrails_malicious_mock_output():
     class MaliciousLLM(MockLLMClient):
         def generate(self, **kwargs):

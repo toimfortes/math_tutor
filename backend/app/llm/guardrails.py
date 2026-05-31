@@ -81,7 +81,13 @@ def _contains_prompt_injection_echo(dialogue: str) -> bool:
 
 
 def _claims_mastery(dialogue: str) -> bool:
-    return re.search(r"\b(mastered|mastery|you have mastered|you've mastered)\b", dialogue, re.I) is not None
+    if re.search(r"\b(cannot|can't|do not|don't|won't|will not)\b.{0,40}\b(mastered|mastery)\b", dialogue, re.I):
+        return False
+    return re.search(
+        r"\b(you have mastered|you've mastered|you mastered|mastered this skill|achieved mastery|mark me mastered)\b",
+        dialogue,
+        re.I,
+    ) is not None
 
 
 def _teacher_check_fire(teacher_check: dict[str, Any], pedagogical_move: str) -> str | None:

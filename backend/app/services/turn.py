@@ -55,12 +55,14 @@ class TurnService:
         active_ref = self.scheduler.first_ref(theme=theme)
         state = SessionState(session_id=session_id, student_id=student_id, theme=theme, active_ref=active_ref)
         self.store.sessions[session_id] = state
+        public = self.problem_bank.public_problem(active_ref)
         llm = self.llm_client.generate(
             check_result=None,
             diagnostic=None,
             presenting_next=True,
             allowed_help_level=0,
             tier="routine",
+            context=_llm_context(public_problem=public, check_result=None, allowed_help_level=0),
         )
         private = self.problem_bank.private_problem(active_ref)
         guarded = apply_guardrails(
@@ -78,7 +80,7 @@ class TurnService:
         _persist_teacher_check_if_accepted(state, llm.teacher_check, guarded.guardrail_fires)
         return TurnResponse(
             session_id=session_id,
-            public_problem=self.problem_bank.public_problem(active_ref),
+            public_problem=public,
             dialogue=guarded.dialogue,
             pedagogical_move=guarded.pedagogical_move,
             check_result=None,
@@ -120,6 +122,12 @@ class TurnService:
             presenting_next=presenting_next,
             allowed_help_level=allowed_help,
             tier=_tier_for_turn(check.check_result, diagnostic, presenting_next),
+            context=_llm_context(
+                public_problem=active_public,
+                check_result=check.check_result,
+                allowed_help_level=allowed_help,
+                diagnostic=diagnostic,
+            ),
         )
         guarded = apply_guardrails(
             GuardrailInput(
@@ -178,3 +186,42 @@ def _tier_for_turn(check_result: str, diagnostic: DiagnosticResult, presenting_n
     if check_result == "incorrect" and diagnostic.student_error_tag not in {"unknown", "none"}:
         return "hard"
     return "routine"
+
+
+def _llm_context(
+    *,
+    public_problem: PublicProblem,
+    check_result: str | None,
+    allowed_help_level: int,
+    diagnostic: DiagnosticResult | None = None,
+) -> dict[str, object]:
+    context: dict[str, object] = {
+        "public_problem": {
+            "ref": {
+                "problem_id": public_problem.ref.problem_id,
+                "realization_key": public_problem.ref.realization_key,
+            },
+            "skill_id": public_problem.skill_id,
+            "answer_type": public_problem.answer_type,
+            "representations": list(public_problem.representations),
+            "prompt": public_problem.prompt,
+            "hint_scaffold": {
+                "max_safe_hint_level": public_problem.hint_scaffold.max_safe_hint_level,
+                "level_0": public_problem.hint_scaffold.level_0,
+                "level_1": public_problem.hint_scaffold.level_1,
+                "level_2": public_problem.hint_scaffold.level_2,
+                "level_3": public_problem.hint_scaffold.level_3,
+            },
+        },
+        "check_result": check_result,
+        "allowed_help_level": allowed_help_level,
+        "concept_mastered": False,
+    }
+    if diagnostic is not None:
+        context["diagnostic"] = {
+            "student_error_tag": diagnostic.student_error_tag,
+            "confidence": diagnostic.confidence,
+            "matched_pattern": diagnostic.matched_pattern,
+            "safe_hint_level_cap": diagnostic.safe_hint_level_cap,
+        }
+    return context
