@@ -74,6 +74,42 @@ def test_wrong_answer_uses_diagnostic_tag_and_does_not_advance_problem():
     assert response.pedagogical_move == "rectify_error"
 
 
+def test_wrong_answer_diagnostics_are_template_backed_across_rate_problems():
+    service = build_service()
+    start = service.start_session(student_id="student-1", theme="space_logistics")
+    cases = [
+        (RealizedProblemRef("lf_p03", "drone_physics"), "10", "sign_error"),
+        (RealizedProblemRef("lf_p06", "neutral"), "10", "sign_error"),
+        (RealizedProblemRef("lf_p07", "space_logistics"), "1/2", "inverted_slope"),
+    ]
+
+    for index, (ref, answer, expected_tag) in enumerate(cases):
+        service.store.sessions[start.session_id].active_ref = ref
+        response = service.submit_turn(
+            start.session_id,
+            idempotency_key=f"known-wrong-{index}",
+            answer=answer,
+        )
+
+        assert response.check_result == "incorrect"
+        assert response.diagnostic.student_error_tag == expected_tag
+        assert response.diagnostic.confidence == "high"
+        assert response.pedagogical_move == "rectify_error"
+        assert response.public_problem.ref == ref
+
+
+def test_unknown_wrong_answer_stays_low_confidence():
+    service = build_service()
+    start = service.start_session(student_id="student-1", theme="space_logistics")
+    service.store.sessions[start.session_id].active_ref = RealizedProblemRef("lf_p09", "neutral")
+
+    response = service.submit_turn(start.session_id, idempotency_key="unknown-wrong", answer="8")
+
+    assert response.check_result == "incorrect"
+    assert response.diagnostic.student_error_tag == "unknown"
+    assert response.diagnostic.confidence == "low"
+
+
 def test_turn_service_passes_public_context_without_private_answer_to_llm():
     class RecordingLLM(MockLLMClient):
         def __init__(self):

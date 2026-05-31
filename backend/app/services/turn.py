@@ -7,6 +7,7 @@ from uuid import uuid4
 from backend.app.content.seed_loader import ProblemBank, PublicProblem, RealizedProblemRef
 from backend.app.domain.checker import check_answer
 from backend.app.domain.diagnostic_checker import DiagnosticResult, diagnose_answer
+from backend.app.domain.diagnostic_catalog import known_wrong_answers_for_ref
 from backend.app.domain.help_ceiling import compute_allowed_help_level
 from backend.app.domain.mastery import ProblemAttempt, SubmissionEvent
 from backend.app.domain.mastery import SkillState
@@ -164,7 +165,7 @@ class TurnService:
             student_answer=answer,
             canonical_answer=private.canonical_answer,
             answer_type=public.answer_type,
-            known_wrong_answers=_known_wrong_answers(current_ref),
+            known_wrong_answers=known_wrong_answers_for_ref(current_ref),
             variable=_variable_from_answer(private.canonical_answer),
         )
         submission = SubmissionEvent(check_result=check.check_result, hint_level=0)
@@ -350,12 +351,6 @@ class TurnService:
                 presenting_next=presenting_next,
                 allowed_help_level=allowed_help_level,
             ), ("llm_error",)
-
-
-def _known_wrong_answers(ref: RealizedProblemRef) -> dict[str, str]:
-    if ref.problem_id == "lf_p04":
-        return {"inverted_slope": "1/3", "sign_error": "-3"}
-    return {}
 
 
 def _fallback_llm_response(
