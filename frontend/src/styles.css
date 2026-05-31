@@ -91,25 +91,37 @@ input {
 }
 
 .primary,
+.secondary,
 .icon-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  border: 0;
   border-radius: 8px;
-  background: #2563eb;
-  color: #ffffff;
   cursor: pointer;
   font-weight: 700;
 }
 
 .primary {
+  border: 0;
+  background: #2563eb;
+  color: #ffffff;
   min-height: 44px;
   padding: 0 14px;
 }
 
+.secondary {
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid #b8c2d2;
+  background: #ffffff;
+  color: #334155;
+}
+
 .icon-button {
+  border: 0;
+  background: #2563eb;
+  color: #ffffff;
   width: 52px;
   height: 52px;
   flex: 0 0 auto;
@@ -135,6 +147,28 @@ button:disabled {
   font-size: 24px;
 }
 
+.progress-panel {
+  display: grid;
+  gap: 10px;
+  padding-top: 20px;
+  border-top: 1px solid #d8dee8;
+}
+
+.progress-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 30px;
+  gap: 12px;
+  color: #4b5563;
+  font-size: 14px;
+}
+
+.progress-row strong {
+  color: #111827;
+  font-size: 16px;
+}
+
 .workspace {
   display: flex;
   flex-direction: column;
@@ -147,6 +181,12 @@ button:disabled {
   align-items: flex-start;
   justify-content: space-between;
   gap: 24px;
+}
+
+.problem-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .status {
