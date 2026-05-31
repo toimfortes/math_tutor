@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from uuid import uuid4
 
@@ -13,6 +14,8 @@ from backend.app.domain.scheduler import RoundRobinScheduler
 from backend.app.domain.xp import compute_xp_award
 from backend.app.llm.guardrails import GuardrailInput, apply_guardrails
 from backend.app.llm.types import LLMClient, LLMResponse
+
+logger = logging.getLogger("math_tutor.turn")
 
 
 @dataclass
@@ -104,6 +107,17 @@ class TurnService:
         )
         _persist_teacher_check_if_accepted(state, llm.teacher_check, guarded.guardrail_fires)
         self.store.create(state)
+        logger.info(
+            "session_started",
+            extra={
+                "session_id": session_id,
+                "student_id": student_id,
+                "theme": theme,
+                "problem_id": public.ref.problem_id,
+                "skill_id": public.skill_id,
+                "llm_error": "llm_error" in llm_guardrail_fires,
+            },
+        )
         return TurnResponse(
             session_id=session_id,
             public_problem=public,
@@ -182,6 +196,18 @@ class TurnService:
         )
         state.idempotency[idempotency_key] = response
         self.store.save(state)
+        logger.info(
+            "turn_submitted",
+            extra={
+                "session_id": session_id,
+                "problem_id": current_ref.problem_id,
+                "skill_id": public.skill_id,
+                "check_result": check.check_result,
+                "xp_awarded": xp,
+                "llm_error": "llm_error" in llm_guardrail_fires,
+                "guardrail_fires": list(response.guardrail_fires),
+            },
+        )
         return response
 
     def skip_problem(self, session_id: str, *, reason: str) -> TurnResponse:
