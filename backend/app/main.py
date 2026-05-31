@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from backend.app.api_models import SkillStateModel, TurnResponseModel
 from backend.app.config import Settings
 from backend.app.content.seed_loader import load_gold_problem_bank
+from backend.app.services.attempt_log import SqliteAttemptLog
 from backend.app.services.rate_limiter import FixedWindowRateLimiter
 from backend.app.services.session_store import SqliteSessionStore
 from backend.app.llm.anthropic_client import AnthropicLLMClient
@@ -51,11 +52,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if active_settings.daily_llm_budget is not None
         else None
     )
+    attempt_log = SqliteAttemptLog(active_settings.session_db_path) if active_settings.session_db_path else None
     turn_service = TurnService(
         problem_bank=problem_bank,
         llm_client=_build_llm_client(active_settings),
         store=store,
         llm_budget=llm_budget,
+        attempt_log=attempt_log,
     )
     app.state.turn_service = turn_service
     limiter = (

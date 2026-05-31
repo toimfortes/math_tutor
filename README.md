@@ -54,7 +54,9 @@ LLM_PROVIDER=anthropic ANTHROPIC_API_KEY=... python -m uvicorn backend.app.main:
 By default sessions live in memory and are lost on restart. Set `SESSION_DB_PATH`
 to a file to persist them to SQLite (stdlib `sqlite3`, no migrations needed —
 the table is created on startup). Each session is stored as one JSON aggregate
-row with a `version` column for optimistic locking.
+row with a `version` column for optimistic locking. With a db path set, every
+graded turn is also written to an append-only `attempt_log` table (an immutable
+analytics trail, separate from the mutable session aggregate).
 
 ```bash
 SESSION_DB_PATH=./sessions.db LLM_PROVIDER=mock \

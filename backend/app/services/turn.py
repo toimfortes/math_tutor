@@ -72,11 +72,20 @@ class TurnResponse:
 
 
 class TurnService:
-    def __init__(self, *, problem_bank: ProblemBank, llm_client: LLMClient, store: InMemoryTurnStore, llm_budget=None):
+    def __init__(
+        self,
+        *,
+        problem_bank: ProblemBank,
+        llm_client: LLMClient,
+        store: InMemoryTurnStore,
+        llm_budget=None,
+        attempt_log=None,
+    ):
         self.problem_bank = problem_bank
         self.llm_client = llm_client
         self.store = store
         self.llm_budget = llm_budget
+        self.attempt_log = attempt_log
         self.scheduler = RoundRobinScheduler(problem_bank)
 
     def start_session(self, *, student_id: str, theme: str) -> TurnResponse:
@@ -199,6 +208,15 @@ class TurnService:
         )
         state.idempotency[idempotency_key] = response
         self.store.save(state)
+        if self.attempt_log is not None:
+            self.attempt_log.record(
+                session_id=session_id,
+                student_id=state.student_id,
+                skill_id=public.skill_id,
+                problem_id=current_ref.problem_id,
+                check_result=check.check_result,
+                xp_awarded=xp,
+            )
         logger.info(
             "turn_submitted",
             extra={
