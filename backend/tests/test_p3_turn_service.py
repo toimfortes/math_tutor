@@ -12,6 +12,11 @@ def build_service() -> TurnService:
     )
 
 
+class FailingLLMClient:
+    def generate(self, **kwargs):
+        raise RuntimeError("provider timeout")
+
+
 def test_session_start_returns_server_selected_problem():
     service = build_service()
 
@@ -109,3 +114,35 @@ def test_turn_service_passes_public_context_without_private_answer_to_llm():
     assert "canonical_answer" not in str(start_context)
     assert "canonical_answer" not in str(turn_context)
     assert "private_problem" not in str(turn_context)
+
+
+def test_session_start_degrades_safely_when_llm_fails():
+    service = TurnService(
+        problem_bank=load_gold_problem_bank(),
+        llm_client=FailingLLMClient(),
+        store=InMemoryTurnStore(),
+    )
+
+    response = service.start_session(student_id="student-1", theme="space_logistics")
+
+    assert response.public_problem.prompt
+    assert response.pedagogical_move == "present_next_problem"
+    assert response.check_result is None
+    assert response.xp_awarded == 0
+    assert "llm_error" in response.guardrail_fires
+    assert "answer" not in response.dialogue.lower()
+
+
+def test_submit_turn_preserves_code_owned_result_when_llm_fails():
+    service = build_service()
+    start = service.start_session(student_id="student-1", theme="space_logistics")
+    service.llm_client = FailingLLMClient()
+
+    response = service.submit_turn(start.session_id, idempotency_key="turn-llm-fail", answer="(4, 3)")
+
+    assert response.check_result == "correct"
+    assert response.xp_awarded == 8
+    assert response.public_problem.ref != start.public_problem.ref
+    assert response.pedagogical_move == "present_next_problem"
+    assert "llm_error" in response.guardrail_fires
+    assert service.submit_turn(start.session_id, idempotency_key="turn-llm-fail", answer="wrong") == response

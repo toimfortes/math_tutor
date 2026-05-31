@@ -12,7 +12,7 @@ from backend.app.domain.mastery import SkillState
 from backend.app.domain.scheduler import RoundRobinScheduler
 from backend.app.domain.xp import compute_xp_award
 from backend.app.llm.guardrails import GuardrailInput, apply_guardrails
-from backend.app.llm.types import LLMClient
+from backend.app.llm.types import LLMClient, LLMResponse
 
 
 @dataclass
@@ -63,7 +63,7 @@ class TurnService:
         self.store.sessions[session_id] = state
         public = self.problem_bank.public_problem(active_ref)
         state.contexts_seen.add(_context_key(public))
-        llm = self.llm_client.generate(
+        llm, llm_guardrail_fires = self._generate_llm(
             check_result=None,
             diagnostic=None,
             presenting_next=True,
@@ -93,7 +93,7 @@ class TurnService:
             check_result=None,
             xp_awarded=0,
             proposed_hint_level=guarded.proposed_hint_level,
-            guardrail_fires=guarded.guardrail_fires,
+            guardrail_fires=(*llm_guardrail_fires, *guarded.guardrail_fires),
         )
 
     def submit_turn(self, session_id: str, *, idempotency_key: str, answer: str) -> TurnResponse:
@@ -124,7 +124,7 @@ class TurnService:
 
         active_public = self.problem_bank.public_problem(state.active_ref)
         allowed_help = compute_allowed_help_level(attempt.submissions, max_safe_hint_level=active_public.hint_scaffold.max_safe_hint_level)
-        llm = self.llm_client.generate(
+        llm, llm_guardrail_fires = self._generate_llm(
             check_result=check.check_result,
             diagnostic=diagnostic,
             presenting_next=presenting_next,
@@ -159,7 +159,7 @@ class TurnService:
             xp_awarded=xp,
             diagnostic=diagnostic,
             proposed_hint_level=guarded.proposed_hint_level,
-            guardrail_fires=guarded.guardrail_fires,
+            guardrail_fires=(*llm_guardrail_fires, *guarded.guardrail_fires),
         )
         state.idempotency[idempotency_key] = response
         return response
@@ -172,7 +172,7 @@ class TurnService:
         state.active_ref = self.scheduler.next_ref(skipped_ref, theme=state.theme)
         public = self.problem_bank.public_problem(state.active_ref)
         state.contexts_seen.add(_context_key(public))
-        llm = self.llm_client.generate(
+        llm, llm_guardrail_fires = self._generate_llm(
             check_result=None,
             diagnostic=None,
             presenting_next=True,
@@ -202,7 +202,7 @@ class TurnService:
             check_result=None,
             xp_awarded=0,
             proposed_hint_level=guarded.proposed_hint_level,
-            guardrail_fires=guarded.guardrail_fires,
+            guardrail_fires=(*llm_guardrail_fires, *guarded.guardrail_fires),
         )
 
     def record_transfer(self, session_id: str, *, skill_id: str, context_key: str) -> SkillState:
@@ -228,11 +228,65 @@ class TurnService:
             retention_passed=skill_id in state.retention_passed_by_skill,
         )
 
+    def _generate_llm(
+        self,
+        *,
+        check_result: str | None,
+        diagnostic: DiagnosticResult | None,
+        presenting_next: bool,
+        allowed_help_level: int,
+        tier: str,
+        context: dict[str, object],
+    ) -> tuple[LLMResponse, tuple[str, ...]]:
+        try:
+            return (
+                self.llm_client.generate(
+                    check_result=check_result,
+                    diagnostic=diagnostic,
+                    presenting_next=presenting_next,
+                    allowed_help_level=allowed_help_level,
+                    tier=tier,
+                    context=context,
+                ),
+                (),
+            )
+        except Exception:
+            return _fallback_llm_response(
+                check_result=check_result,
+                presenting_next=presenting_next,
+                allowed_help_level=allowed_help_level,
+            ), ("llm_error",)
+
 
 def _known_wrong_answers(ref: RealizedProblemRef) -> dict[str, str]:
     if ref.problem_id == "lf_p04":
         return {"inverted_slope": "1/3", "sign_error": "-3"}
     return {}
+
+
+def _fallback_llm_response(
+    *, check_result: str | None, presenting_next: bool, allowed_help_level: int
+) -> LLMResponse:
+    if presenting_next:
+        return LLMResponse(
+            dialogue="Tutor narration is temporarily unavailable. Work on the problem shown.",
+            pedagogical_move="present_next_problem",
+            ui_mode="chat",
+            proposed_hint_level=0,
+        )
+    if check_result == "undecidable":
+        return LLMResponse(
+            dialogue="I could not parse that format. Try a clearer numeric or algebraic form.",
+            pedagogical_move="request_clarification",
+            ui_mode="chat",
+            proposed_hint_level=0,
+        )
+    return LLMResponse(
+        dialogue="Tutor narration is temporarily unavailable. Use the visible hint and try again.",
+        pedagogical_move="offer_heuristic_hint",
+        ui_mode="chat",
+        proposed_hint_level=allowed_help_level,
+    )
 
 
 def _variable_from_answer(answer: str) -> str | None:
