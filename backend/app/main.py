@@ -82,6 +82,8 @@ def _turn_response_to_dict(response: TurnResponse) -> dict:
         "pedagogical_move": response.pedagogical_move,
         "check_result": response.check_result,
         "xp_awarded": response.xp_awarded,
+        "proposed_hint_level": response.proposed_hint_level,
+        "guardrail_fires": list(response.guardrail_fires),
         "diagnostic": None
         if diagnostic is None
         else {

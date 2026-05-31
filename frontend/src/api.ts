@@ -35,6 +35,8 @@ export type TurnResponse = {
   pedagogicalMove: string;
   checkResult: "correct" | "incorrect" | "undecidable" | null;
   xpAwarded: number;
+  proposedHintLevel: number;
+  guardrailFires: string[];
   diagnostic: Diagnostic | null;
 };
 
@@ -98,6 +100,8 @@ function toTurnResponse(raw: any): TurnResponse {
     pedagogicalMove: raw.pedagogical_move,
     checkResult: raw.check_result,
     xpAwarded: raw.xp_awarded,
+    proposedHintLevel: raw.proposed_hint_level,
+    guardrailFires: raw.guardrail_fires ?? [],
     diagnostic: raw.diagnostic
       ? {
           studentErrorTag: raw.diagnostic.student_error_tag,

@@ -10,6 +10,7 @@ from backend.app.domain.help_ceiling import compute_allowed_help_level
 from backend.app.domain.mastery import ProblemAttempt, SubmissionEvent
 from backend.app.domain.scheduler import RoundRobinScheduler
 from backend.app.domain.xp import compute_xp_award
+from backend.app.llm.guardrails import GuardrailInput, apply_guardrails
 from backend.app.llm.mock_client import MockLLMClient
 
 
@@ -37,6 +38,8 @@ class TurnResponse:
     check_result: str | None
     xp_awarded: int
     diagnostic: DiagnosticResult | None = None
+    proposed_hint_level: int = 0
+    guardrail_fires: tuple[str, ...] = ()
 
 
 class TurnService:
@@ -52,13 +55,27 @@ class TurnService:
         state = SessionState(session_id=session_id, student_id=student_id, theme=theme, active_ref=active_ref)
         self.store.sessions[session_id] = state
         llm = self.llm_client.generate(check_result=None, diagnostic=None, presenting_next=True, allowed_help_level=0)
+        private = self.problem_bank.private_problem(active_ref)
+        guarded = apply_guardrails(
+            GuardrailInput(
+                dialogue=llm.dialogue,
+                pedagogical_move=llm.pedagogical_move,
+                proposed_hint_level=llm.proposed_hint_level,
+                allowed_help_level=0,
+                canonical_answer=private.canonical_answer,
+                banned_strings=[private.canonical_answer],
+                concept_mastered=False,
+            )
+        )
         return TurnResponse(
             session_id=session_id,
             public_problem=self.problem_bank.public_problem(active_ref),
-            dialogue=llm.dialogue,
-            pedagogical_move=llm.pedagogical_move,
+            dialogue=guarded.dialogue,
+            pedagogical_move=guarded.pedagogical_move,
             check_result=None,
             xp_awarded=0,
+            proposed_hint_level=guarded.proposed_hint_level,
+            guardrail_fires=guarded.guardrail_fires,
         )
 
     def submit_turn(self, session_id: str, *, idempotency_key: str, answer: str) -> TurnResponse:
@@ -94,14 +111,27 @@ class TurnService:
             presenting_next=presenting_next,
             allowed_help_level=allowed_help,
         )
+        guarded = apply_guardrails(
+            GuardrailInput(
+                dialogue=llm.dialogue,
+                pedagogical_move=llm.pedagogical_move,
+                proposed_hint_level=llm.proposed_hint_level,
+                allowed_help_level=allowed_help,
+                canonical_answer=private.canonical_answer,
+                banned_strings=[private.canonical_answer],
+                concept_mastered=False,
+            )
+        )
         response = TurnResponse(
             session_id=session_id,
             public_problem=active_public,
-            dialogue=llm.dialogue,
-            pedagogical_move=llm.pedagogical_move,
+            dialogue=guarded.dialogue,
+            pedagogical_move=guarded.pedagogical_move,
             check_result=check.check_result,
             xp_awarded=xp,
             diagnostic=diagnostic,
+            proposed_hint_level=guarded.proposed_hint_level,
+            guardrail_fires=guarded.guardrail_fires,
         )
         state.idempotency[idempotency_key] = response
         return response
