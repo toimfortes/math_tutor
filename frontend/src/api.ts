@@ -1,3 +1,17 @@
+import type { components } from "./generated/apiSchema";
+
+// Wire (snake_case) shapes generated from the backend OpenAPI schema. Typing the
+// mappers against these catches drift between the API contract and the parser at
+// compile time. Regenerate with:
+//   python -c "import json; from backend.app.main import create_app; \
+//     open('frontend/openapi.json','w').write(json.dumps(create_app().openapi()))"
+//   cd frontend && npx openapi-typescript openapi.json -o src/generated/apiSchema.ts
+type WireTurn = components["schemas"]["TurnResponseModel"];
+type WireSkill = components["schemas"]["SkillStateModel"];
+type WireGraph = components["schemas"]["GraphModel"];
+type WireTable = components["schemas"]["TableModel"];
+type WireGrid = components["schemas"]["GridModel"];
+
 export type ProblemRef = {
   problemId: string;
   realizationKey: string;
@@ -176,7 +190,7 @@ async function postSkillStateJson(fetcher: FetchLike, url: string, body: unknown
   return toSkillState(await response.json());
 }
 
-function toTurnResponse(raw: any): TurnResponse {
+function toTurnResponse(raw: WireTurn): TurnResponse {
   return {
     sessionId: raw.session_id,
     publicProblem: {
@@ -197,12 +211,12 @@ function toTurnResponse(raw: any): TurnResponse {
         level0: raw.public_problem.hint_scaffold.level_0,
         level1: raw.public_problem.hint_scaffold.level_1,
         level2: raw.public_problem.hint_scaffold.level_2,
-        level3: raw.public_problem.hint_scaffold.level_3,
+        level3: raw.public_problem.hint_scaffold.level_3 ?? null,
       },
     },
     dialogue: raw.dialogue,
     pedagogicalMove: raw.pedagogical_move,
-    checkResult: raw.check_result,
+    checkResult: (raw.check_result ?? null) as TurnResponse["checkResult"],
     xpAwarded: raw.xp_awarded,
     proposedHintLevel: raw.proposed_hint_level,
     guardrailFires: raw.guardrail_fires ?? [],
@@ -210,14 +224,14 @@ function toTurnResponse(raw: any): TurnResponse {
       ? {
           studentErrorTag: raw.diagnostic.student_error_tag,
           confidence: raw.diagnostic.confidence,
-          matchedPattern: raw.diagnostic.matched_pattern,
+          matchedPattern: raw.diagnostic.matched_pattern ?? null,
           safeHintLevelCap: raw.diagnostic.safe_hint_level_cap,
         }
       : null,
   };
 }
 
-function toGraphSpec(raw: any): GraphSpec | null {
+function toGraphSpec(raw: WireGraph | null | undefined): GraphSpec | null {
   if (!raw) {
     return null;
   }
@@ -227,12 +241,12 @@ function toGraphSpec(raw: any): GraphSpec | null {
     xMax: raw.x_max,
     yMin: raw.y_min,
     yMax: raw.y_max,
-    points: (raw.points ?? []).map((point: [number, number]) => [point[0], point[1]] as [number, number]),
+    points: raw.points.map((point) => [point[0], point[1]] as [number, number]),
     showGrid: raw.show_grid,
   };
 }
 
-function toGridSpec(raw: any): GridSpec | null {
+function toGridSpec(raw: WireGrid | null | undefined): GridSpec | null {
   if (!raw) {
     return null;
   }
@@ -245,18 +259,18 @@ function toGridSpec(raw: any): GridSpec | null {
   };
 }
 
-function toTableSpec(raw: any): TableSpec | null {
+function toTableSpec(raw: WireTable | null | undefined): TableSpec | null {
   if (!raw) {
     return null;
   }
   return {
     inputLabel: raw.input_label,
     outputLabel: raw.output_label,
-    rows: (raw.rows ?? []).map((row: [number, number]) => [row[0], row[1]] as [number, number]),
+    rows: raw.rows.map((row) => [row[0], row[1]] as [number, number]),
   };
 }
 
-function toSkillState(raw: any): SkillState {
+function toSkillState(raw: WireSkill): SkillState {
   return {
     skillId: raw.skill_id,
     attemptCount: raw.attempt_count,

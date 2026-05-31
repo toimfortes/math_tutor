@@ -6,3 +6,6 @@ __pycache__/
 node_modules/
 dist/
 *.tsbuildinfo
+
+# Intermediate OpenAPI snapshot; the generated TS types are committed instead.
+frontend/openapi.json

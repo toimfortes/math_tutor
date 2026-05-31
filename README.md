@@ -77,6 +77,18 @@ When the budget is exhausted, turns degrade to deterministic fallback narration
 instead of calling the provider — code-owned grading and scheduling keep working,
 so the tutoring loop never breaks. Unset disables the cap.
 
+## Generated API Types
+
+`frontend/src/generated/apiSchema.ts` is generated from the backend OpenAPI
+schema and used to type the API client's response parsing, catching contract
+drift at compile time. Regenerate after changing response models:
+
+```bash
+python -c "import json; from backend.app.main import create_app; \
+  open('frontend/openapi.json','w').write(json.dumps(create_app().openapi()))"
+cd frontend && npx openapi-typescript openapi.json -o src/generated/apiSchema.ts
+```
+
 ## Verification
 
 Backend:
