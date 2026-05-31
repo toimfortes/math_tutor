@@ -3,9 +3,9 @@ import type { components } from "./generated/apiSchema";
 // Wire (snake_case) shapes generated from the backend OpenAPI schema. Typing the
 // mappers against these catches drift between the API contract and the parser at
 // compile time. Regenerate with:
-//   python -c "import json; from backend.app.main import create_app; \
-//     open('frontend/openapi.json','w').write(json.dumps(create_app().openapi()))"
-//   cd frontend && npx openapi-typescript openapi.json -o src/generated/apiSchema.ts
+//   cd frontend && npm run generate:api
+// CI checks drift with:
+//   cd frontend && npm run check:api
 type WireTurn = components["schemas"]["TurnResponseModel"];
 type WireSkill = components["schemas"]["SkillStateModel"];
 type WireGraph = components["schemas"]["GraphModel"];
