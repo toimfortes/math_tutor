@@ -1,6 +1,7 @@
-import { ArrowRight, BadgeCheck, CalendarCheck2, CheckCircle2, CircleAlert, FastForward, RotateCcw, Send, Sparkles } from "lucide-react";
+import { ArrowRight, BadgeCheck, CalendarCheck2, CheckCircle2, CircleAlert, FastForward, RotateCcw, Send } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
 import { getStudentState, recordRetention, recordTransfer, SkillState, skipProblem, startSession, submitTurn, TurnResponse } from "./api";
+import { ChatPanel } from "./components/ChatPanel";
 
 const THEMES = [
   { value: "space_logistics", label: "Space Logistics" },
@@ -170,10 +171,7 @@ export function App() {
               </button>
             </div>
 
-            <div className="tutor-line">
-              <Sparkles size={18} />
-              <p>{turn.dialogue}</p>
-            </div>
+            <ChatPanel dialogue={turn.dialogue} />
 
             <form className="answer-row" onSubmit={(event) => void submit(event)}>
               <input
