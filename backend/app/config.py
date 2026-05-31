@@ -10,6 +10,7 @@ class Settings:
     app_name: str = "Math Tutor"
     database_url: str = "sqlite+pysqlite:///:memory:"
     session_db_path: str | None = None
+    rate_limit_per_minute: int | None = None
     llm_provider: str = "mock"
     anthropic_api_key: str | None = None
     anthropic_api_url: str = "https://api.anthropic.com/v1/messages"
@@ -35,6 +36,7 @@ class Settings:
             app_name=source.get("APP_NAME", cls.app_name),
             database_url=source.get("DATABASE_URL", cls.database_url),
             session_db_path=source.get("SESSION_DB_PATH"),
+            rate_limit_per_minute=_optional_int_from_env(source, "RATE_LIMIT_PER_MINUTE"),
             llm_provider=source.get("LLM_PROVIDER", cls.llm_provider).lower(),
             anthropic_api_key=source.get("ANTHROPIC_API_KEY"),
             anthropic_api_url=source.get("ANTHROPIC_API_URL", cls.anthropic_api_url),
@@ -59,4 +61,11 @@ def _int_from_env(source: Mapping[str, str], key: str, default: int) -> int:
     value = source.get(key)
     if value is None:
         return default
+    return int(value)
+
+
+def _optional_int_from_env(source: Mapping[str, str], key: str) -> int | None:
+    value = source.get(key)
+    if value is None:
+        return None
     return int(value)

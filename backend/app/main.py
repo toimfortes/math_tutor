@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from backend.app.config import Settings
 from backend.app.content.seed_loader import load_gold_problem_bank
+from backend.app.services.rate_limiter import FixedWindowRateLimiter
 from backend.app.services.session_store import SqliteSessionStore
 from backend.app.llm.anthropic_client import AnthropicLLMClient
 from backend.app.llm.gemini_client import GeminiLLMClient
@@ -50,6 +51,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         store=store,
     )
     app.state.turn_service = turn_service
+    limiter = (
+        FixedWindowRateLimiter(limit=active_settings.rate_limit_per_minute)
+        if active_settings.rate_limit_per_minute is not None
+        else None
+    )
+
+    def _enforce_rate_limit(key: str) -> None:
+        if limiter is not None and not limiter.allow(key):
+            raise HTTPException(status_code=429, detail="rate limit exceeded")
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -57,12 +67,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/session/start")
     def start_session(request: StartSessionRequest) -> dict:
+        _enforce_rate_limit(f"start:{request.student_id}")
         return _turn_response_to_dict(
             turn_service.start_session(student_id=request.student_id, theme=request.theme)
         )
 
     @app.post("/turn")
     def submit_turn(request: TurnRequest) -> dict:
+        _enforce_rate_limit(f"turn:{request.session_id}")
         return _turn_response_to_dict(
             turn_service.submit_turn(
                 request.session_id,

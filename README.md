@@ -61,6 +61,13 @@ SESSION_DB_PATH=./sessions.db LLM_PROVIDER=mock \
   python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
 ```
 
+## Rate Limiting
+
+Set `RATE_LIMIT_PER_MINUTE` to cap requests to `/session/start` (per student)
+and `/turn` (per session); exceeding it returns HTTP 429. Unset disables it.
+The limiter is per-process and in-memory — a shared backend would be needed for
+a multi-instance deploy.
+
 ## Verification
 
 Backend:
