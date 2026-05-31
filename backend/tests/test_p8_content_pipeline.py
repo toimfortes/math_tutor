@@ -12,6 +12,7 @@ from backend.content_pipeline.templates.linear_functions import (
     known_wrong_answers,
     solve_case,
 )
+from backend.content_pipeline.provenance import ProviderRun, build_promotion_manifest, write_promotion_manifest
 from backend.content_pipeline.verify import verify_frozen_gold_bank
 
 
@@ -204,3 +205,55 @@ def test_verifier_flags_table_payload_with_answer_metadata(tmp_path):
 
     assert not report.ok
     assert any("lf_p02" in error for error in report.table_errors)
+
+
+def test_promotion_manifest_records_artifact_hash_and_verifier_summary():
+    manifest = build_promotion_manifest(
+        artifact_path=DEFAULT_GOLD_PATH,
+        provider_runs=[
+            ProviderRun(
+                provider="gemini",
+                model="gemini-3.5-flash",
+                role="narrator",
+                prompt_version="narrator-v1",
+                run_id="run-001",
+            )
+        ],
+        generated_at="2026-05-31T00:00:00Z",
+    )
+
+    assert manifest.artifact_path == str(DEFAULT_GOLD_PATH)
+    assert len(manifest.artifact_sha256) == 64
+    assert manifest.verifier_ok is True
+    assert manifest.problem_count == 16
+    assert manifest.realization_count == 48
+    assert manifest.provider_runs[0].provider == "gemini"
+    assert manifest.provider_runs[0].prompt_version == "narrator-v1"
+
+
+def test_promotion_manifest_refuses_unverified_artifacts(tmp_path):
+    data = json.loads(DEFAULT_GOLD_PATH.read_text())
+    data["domain"] = "wrong"
+    broken = tmp_path / "broken_bank.json"
+    broken.write_text(json.dumps(data))
+
+    manifest = build_promotion_manifest(artifact_path=broken, provider_runs=[], generated_at="2026-05-31T00:00:00Z")
+
+    assert manifest.verifier_ok is False
+    assert "domain must be linear_functions" in manifest.verifier_errors
+
+
+def test_promotion_manifest_writes_reviewable_json(tmp_path):
+    manifest = build_promotion_manifest(
+        artifact_path=DEFAULT_GOLD_PATH,
+        provider_runs=[],
+        generated_at="2026-05-31T00:00:00Z",
+    )
+    output = tmp_path / "promotion-manifest.json"
+
+    write_promotion_manifest(manifest, output)
+
+    written = json.loads(output.read_text())
+    assert written["verifier_ok"] is True
+    assert written["artifact_sha256"] == manifest.artifact_sha256
+    assert written["provider_runs"] == []

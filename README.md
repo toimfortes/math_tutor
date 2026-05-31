@@ -126,4 +126,6 @@ Deterministic P8 verification recomputes all gold answers from `backend/content_
 python -m backend.content_pipeline.verify
 ```
 
+Promotion provenance is represented by `backend.content_pipeline.provenance`. It creates a reviewable manifest with the artifact SHA-256 hash, verifier summary, and provider/model/prompt run metadata for any generated bank promoted later.
+
 Live generation and cross-provider extraction remain offline promotion steps, not reproducible CI gates.

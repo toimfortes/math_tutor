@@ -8,6 +8,7 @@ Date: 2026-05-31
 - Added `solve_case()` so Python recomputes every gold canonical answer from template params.
 - Added deterministic diagnostic distractor generation for slope/rate templates.
 - Added `python -m backend.content_pipeline.verify` as the frozen-bank promotion check.
+- Added `backend.content_pipeline.provenance` to create reviewable promotion manifests with artifact hashes, verifier summaries, and provider/model/prompt run metadata. This records live-generation provenance without selecting or invoking a provider.
 
 ## Gate Results
 
@@ -22,7 +23,7 @@ $ python -m backend.content_pipeline.safety
 gold theme safety scan passed
 
 $ pytest -q
-72 passed in 0.40s
+118 passed in 0.84s
 ```
 
 ## What This Proves
@@ -30,6 +31,7 @@ $ pytest -q
 - Every runtime `RealizedProblemRef` in the gold bank has a corresponding deterministic template case.
 - Template `solve()` reproduces the private canonical answer for the exact shown realization.
 - The frozen artifact has required schema fields, authored hint scaffolds, semantic role metadata, deterministic safety scan coverage, and no answer-shaped public leak patterns.
+- A promoted artifact can carry a deterministic SHA-256 hash and provider-run provenance record, and failed verifier output is preserved in the manifest.
 
 ## Residual Limits
 
