@@ -11,7 +11,7 @@ from backend.app.domain.mastery import ProblemAttempt, SubmissionEvent
 from backend.app.domain.scheduler import RoundRobinScheduler
 from backend.app.domain.xp import compute_xp_award
 from backend.app.llm.guardrails import GuardrailInput, apply_guardrails
-from backend.app.llm.mock_client import MockLLMClient
+from backend.app.llm.types import LLMClient
 
 
 @dataclass
@@ -22,6 +22,7 @@ class SessionState:
     active_ref: RealizedProblemRef
     attempts: list[ProblemAttempt] = field(default_factory=list)
     idempotency: dict[str, "TurnResponse"] = field(default_factory=dict)
+    hidden_teacher_checks: list[dict[str, object]] = field(default_factory=list)
 
 
 @dataclass
@@ -43,7 +44,7 @@ class TurnResponse:
 
 
 class TurnService:
-    def __init__(self, *, problem_bank: ProblemBank, llm_client: MockLLMClient, store: InMemoryTurnStore):
+    def __init__(self, *, problem_bank: ProblemBank, llm_client: LLMClient, store: InMemoryTurnStore):
         self.problem_bank = problem_bank
         self.llm_client = llm_client
         self.store = store
@@ -54,7 +55,13 @@ class TurnService:
         active_ref = self.scheduler.first_ref(theme=theme)
         state = SessionState(session_id=session_id, student_id=student_id, theme=theme, active_ref=active_ref)
         self.store.sessions[session_id] = state
-        llm = self.llm_client.generate(check_result=None, diagnostic=None, presenting_next=True, allowed_help_level=0)
+        llm = self.llm_client.generate(
+            check_result=None,
+            diagnostic=None,
+            presenting_next=True,
+            allowed_help_level=0,
+            tier="routine",
+        )
         private = self.problem_bank.private_problem(active_ref)
         guarded = apply_guardrails(
             GuardrailInput(
@@ -65,8 +72,10 @@ class TurnService:
                 canonical_answer=private.canonical_answer,
                 banned_strings=[private.canonical_answer],
                 concept_mastered=False,
+                teacher_check=llm.teacher_check,
             )
         )
+        _persist_teacher_check_if_accepted(state, llm.teacher_check, guarded.guardrail_fires)
         return TurnResponse(
             session_id=session_id,
             public_problem=self.problem_bank.public_problem(active_ref),
@@ -110,6 +119,7 @@ class TurnService:
             diagnostic=diagnostic,
             presenting_next=presenting_next,
             allowed_help_level=allowed_help,
+            tier=_tier_for_turn(check.check_result, diagnostic, presenting_next),
         )
         guarded = apply_guardrails(
             GuardrailInput(
@@ -120,8 +130,10 @@ class TurnService:
                 canonical_answer=private.canonical_answer,
                 banned_strings=[private.canonical_answer],
                 concept_mastered=False,
+                teacher_check=llm.teacher_check,
             )
         )
+        _persist_teacher_check_if_accepted(state, llm.teacher_check, guarded.guardrail_fires)
         response = TurnResponse(
             session_id=session_id,
             public_problem=active_public,
@@ -148,3 +160,21 @@ def _variable_from_answer(answer: str) -> str | None:
         if char in answer:
             return char
     return None
+
+
+def _persist_teacher_check_if_accepted(
+    state: SessionState, teacher_check: dict[str, object], guardrail_fires: tuple[str, ...]
+) -> None:
+    if not teacher_check:
+        return
+    if any(fire.startswith("teacher_check_") for fire in guardrail_fires):
+        return
+    state.hidden_teacher_checks.append(teacher_check)
+
+
+def _tier_for_turn(check_result: str, diagnostic: DiagnosticResult, presenting_next: bool) -> str:
+    if presenting_next or check_result == "correct":
+        return "routine"
+    if check_result == "incorrect" and diagnostic.student_error_tag not in {"unknown", "none"}:
+        return "hard"
+    return "routine"

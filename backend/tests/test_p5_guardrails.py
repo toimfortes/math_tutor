@@ -65,3 +65,53 @@ def test_turn_service_guardrails_malicious_mock_output():
     assert response.proposed_hint_level == 0
     assert "(4, 3)" not in response.dialogue
     assert "answer_leak" in response.guardrail_fires
+
+
+def test_guardrail_blocks_bad_teacher_check_control_record():
+    guarded = apply_guardrails(
+        GuardrailInput(
+            dialogue="Use the next scaffold.",
+            pedagogical_move="offer_heuristic_hint",
+            proposed_hint_level=1,
+            allowed_help_level=1,
+            canonical_answer="7",
+            teacher_check={
+                "leak_risk": "blocked",
+                "uses_only_authored_scaffold": True,
+                "chosen_pedagogical_move": "offer_heuristic_hint",
+            },
+        )
+    )
+
+    assert guarded.dialogue == "Let's stay with the authored hint for this turn."
+    assert guarded.pedagogical_move == "reflect"
+    assert guarded.proposed_hint_level == 0
+    assert "teacher_check_leak_risk" in guarded.guardrail_fires
+
+
+def test_rejected_teacher_check_is_not_persisted_in_hidden_history():
+    class BadTeacherCheckLLM(MockLLMClient):
+        def generate(self, **kwargs):
+            return LLMResponse(
+                dialogue="Use the next scaffold.",
+                pedagogical_move="offer_heuristic_hint",
+                ui_mode="chat",
+                proposed_hint_level=0,
+                teacher_check={
+                    "leak_risk": "blocked",
+                    "uses_only_authored_scaffold": True,
+                    "chosen_pedagogical_move": "offer_heuristic_hint",
+                },
+            )
+
+    service = TurnService(
+        problem_bank=load_gold_problem_bank(),
+        llm_client=BadTeacherCheckLLM(),
+        store=InMemoryTurnStore(),
+    )
+
+    response = service.start_session(student_id="student-1", theme="space_logistics")
+
+    state = service.store.sessions[response.session_id]
+    assert state.hidden_teacher_checks == []
+    assert "teacher_check_leak_risk" in response.guardrail_fires

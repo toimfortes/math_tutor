@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import re
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -13,6 +14,7 @@ class GuardrailInput:
     canonical_answer: str
     banned_strings: list[str] = field(default_factory=list)
     concept_mastered: bool = False
+    teacher_check: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -32,6 +34,14 @@ def apply_guardrails(payload: GuardrailInput) -> GuardrailResult:
     if hint_level > payload.allowed_help_level:
         hint_level = payload.allowed_help_level
         fires.append("hint_ceiling")
+
+    if payload.teacher_check:
+        teacher_check_fire = _teacher_check_fire(payload.teacher_check, pedagogical_move)
+        if teacher_check_fire:
+            dialogue = "Let's stay with the authored hint for this turn."
+            pedagogical_move = "reflect"
+            hint_level = 0
+            fires.append(teacher_check_fire)
 
     false_mastery = not payload.concept_mastered and _claims_mastery(dialogue)
 
@@ -72,3 +82,14 @@ def _contains_prompt_injection_echo(dialogue: str) -> bool:
 
 def _claims_mastery(dialogue: str) -> bool:
     return re.search(r"\b(mastered|mastery|you have mastered|you've mastered)\b", dialogue, re.I) is not None
+
+
+def _teacher_check_fire(teacher_check: dict[str, Any], pedagogical_move: str) -> str | None:
+    if teacher_check.get("leak_risk") != "none":
+        return "teacher_check_leak_risk"
+    if teacher_check.get("uses_only_authored_scaffold") is not True:
+        return "teacher_check_unauthored_scaffold"
+    chosen_move = teacher_check.get("chosen_pedagogical_move")
+    if chosen_move and chosen_move != pedagogical_move:
+        return "teacher_check_move_mismatch"
+    return None

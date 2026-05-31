@@ -60,12 +60,36 @@ Before emitting public `dialogue`, the model must satisfy a bounded private `tea
 
 ```json
 {
-  "name": "tutor_turn",
+  "name": "emit_tutor_turn",
   "input_schema": {
     "type": "object",
     "additionalProperties": false,
-    "required": ["dialogue", "pedagogical_move", "ui_mode", "proposed_hint_level"],
+    "required": ["teacher_check", "dialogue", "pedagogical_move", "ui_mode", "proposed_hint_level"],
     "properties": {
+      "teacher_check": {
+        "type": "object",
+        "description": "Server-only bounded control record. Not displayed to the student.",
+        "additionalProperties": false,
+        "required": ["student_error_tag", "next_scaffold_id", "chosen_pedagogical_move", "leak_risk", "uses_only_authored_scaffold"],
+        "properties": {
+          "student_error_tag": {
+            "type": "string"
+          },
+          "next_scaffold_id": {
+            "type": "string"
+          },
+          "chosen_pedagogical_move": {
+            "type": "string"
+          },
+          "leak_risk": {
+            "type": "string",
+            "enum": ["none", "possible", "blocked"]
+          },
+          "uses_only_authored_scaffold": {
+            "type": "boolean"
+          }
+        }
+      },
       "dialogue": {
         "type": "string",
         "description": "Student-facing tutor response. Must not reveal the final answer or immediate next computed value."

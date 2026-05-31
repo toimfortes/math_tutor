@@ -5,7 +5,9 @@ from pydantic import BaseModel
 
 from backend.app.config import Settings
 from backend.app.content.seed_loader import load_gold_problem_bank
+from backend.app.llm.anthropic_client import AnthropicLLMClient
 from backend.app.llm.mock_client import MockLLMClient
+from backend.app.llm.types import LLMClient
 from backend.app.services.turn import InMemoryTurnStore, TurnResponse, TurnService
 
 
@@ -21,13 +23,14 @@ class TurnRequest(BaseModel):
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
-    active_settings = settings or Settings()
+    active_settings = settings or Settings.from_env()
     app = FastAPI(title=active_settings.app_name)
     turn_service = TurnService(
         problem_bank=load_gold_problem_bank(),
-        llm_client=MockLLMClient(),
+        llm_client=_build_llm_client(active_settings),
         store=InMemoryTurnStore(),
     )
+    app.state.turn_service = turn_service
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -50,6 +53,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     return app
+
+
+def _build_llm_client(settings: Settings) -> LLMClient:
+    if settings.llm_provider == "mock":
+        return MockLLMClient()
+    if settings.llm_provider == "anthropic":
+        if not settings.anthropic_api_key:
+            raise ValueError("ANTHROPIC_API_KEY is required when LLM_PROVIDER=anthropic")
+        return AnthropicLLMClient(
+            api_key=settings.anthropic_api_key,
+            model=settings.anthropic_model,
+            routine_model=settings.anthropic_routine_model,
+            hard_model=settings.anthropic_hard_model,
+            top_model=settings.anthropic_top_model,
+            routing_mode=settings.llm_routing_mode,
+            api_url=settings.anthropic_api_url,
+            anthropic_version=settings.anthropic_version,
+            max_tokens=settings.llm_max_tokens,
+            timeout_seconds=settings.llm_timeout_seconds,
+        )
+    raise ValueError(f"Unsupported LLM_PROVIDER: {settings.llm_provider}")
 
 
 app = create_app()
