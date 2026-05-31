@@ -128,4 +128,11 @@ python -m backend.content_pipeline.verify
 
 Promotion provenance is represented by `backend.content_pipeline.provenance`. It creates a reviewable manifest with the artifact SHA-256 hash, verifier summary, and provider/model/prompt run metadata for any generated bank promoted later.
 
+```bash
+python -m backend.content_pipeline.provenance \
+  --artifact backend/content_pipeline/gold/linear_functions.json \
+  --output promotion-manifest.json \
+  --provider-run provider=gemini,model=gemini-3.5-flash,role=narrator,prompt_version=narrator-v1,run_id=run-001
+```
+
 Live generation and cross-provider extraction remain offline promotion steps, not reproducible CI gates.

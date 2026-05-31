@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 
 from backend.app.content.seed_loader import (
     DEFAULT_GOLD_PATH,
@@ -257,3 +259,33 @@ def test_promotion_manifest_writes_reviewable_json(tmp_path):
     assert written["verifier_ok"] is True
     assert written["artifact_sha256"] == manifest.artifact_sha256
     assert written["provider_runs"] == []
+
+
+def test_promotion_manifest_cli_writes_json(tmp_path):
+    output = tmp_path / "manifest.json"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "backend.content_pipeline.provenance",
+            "--artifact",
+            str(DEFAULT_GOLD_PATH),
+            "--output",
+            str(output),
+            "--provider-run",
+            "provider=gemini,model=gemini-3.5-flash,role=narrator,prompt_version=narrator-v1,run_id=run-001",
+            "--generated-at",
+            "2026-05-31T00:00:00Z",
+        ],
+        check=False,
+        cwd=DEFAULT_GOLD_PATH.parents[3],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "promotion manifest written" in result.stdout
+    written = json.loads(output.read_text())
+    assert written["provider_runs"][0]["provider"] == "gemini"
+    assert written["provider_runs"][0]["run_id"] == "run-001"

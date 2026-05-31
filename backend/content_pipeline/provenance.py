@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 import hashlib
@@ -68,6 +69,39 @@ def write_promotion_manifest(manifest: PromotionManifest, output_path: Path) -> 
     output_path.write_text(json.dumps(manifest.to_dict(), indent=2, sort_keys=True) + "\n")
 
 
+def parse_provider_run(value: str) -> ProviderRun:
+    fields = dict(part.split("=", 1) for part in value.split(",") if "=" in part)
+    required = {"provider", "model", "role", "prompt_version", "run_id"}
+    missing = required - set(fields)
+    if missing:
+        raise ValueError(f"provider run missing fields: {', '.join(sorted(missing))}")
+    return ProviderRun(
+        provider=fields["provider"],
+        model=fields["model"],
+        role=fields["role"],
+        prompt_version=fields["prompt_version"],
+        run_id=fields["run_id"],
+    )
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="Write a content-promotion provenance manifest.")
+    parser.add_argument("--artifact", required=True, type=Path)
+    parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--provider-run", action="append", default=[])
+    parser.add_argument("--generated-at")
+    args = parser.parse_args(argv)
+
+    provider_runs = [parse_provider_run(value) for value in args.provider_run]
+    manifest = build_promotion_manifest(
+        artifact_path=args.artifact,
+        provider_runs=provider_runs,
+        generated_at=args.generated_at,
+    )
+    write_promotion_manifest(manifest, args.output)
+    print(f"promotion manifest written: {args.output}")
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -89,3 +123,7 @@ def _report_errors(report) -> list[str]:
     if report.safety_terms:
         errors.append(f"unsafe terms: {', '.join(report.safety_terms)}")
     return errors
+
+
+if __name__ == "__main__":
+    main()
