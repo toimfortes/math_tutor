@@ -34,8 +34,8 @@ export function GraphView({
   const toX = (x: number) => PADDING + ((x - graph.xMin) / (graph.xMax - graph.xMin)) * plotWidth;
   const toY = (y: number) => PADDING + ((graph.yMax - y) / (graph.yMax - graph.yMin)) * plotHeight;
 
-  const xTicks = integerTicks(graph.xMin, graph.xMax);
-  const yTicks = integerTicks(graph.yMin, graph.yMax);
+  const xTicks = ticks(graph.xMin, graph.xMax);
+  const yTicks = ticks(graph.yMin, graph.yMax);
   const showXAxis = graph.yMin <= 0 && graph.yMax >= 0;
   const showYAxis = graph.xMin <= 0 && graph.xMax >= 0;
   const linePoints = graph.points.map(([x, y]) => `${toX(x)},${toY(y)}`).join(" ");
@@ -86,10 +86,21 @@ export function GraphView({
   );
 }
 
-function integerTicks(min: number, max: number): number[] {
-  const ticks: number[] = [];
-  for (let value = Math.ceil(min); value <= Math.floor(max); value += 1) {
-    ticks.push(value);
+// Tick marks at a "nice" step (1/2/5 x 10^n) so that wide ranges stay readable
+// (e.g. a 0..100 axis steps by 20 rather than drawing a line at every integer).
+function ticks(min: number, max: number): number[] {
+  const step = niceStep(max - min);
+  const out: number[] = [];
+  const start = Math.ceil(min / step) * step;
+  for (let value = start; value <= max + 1e-9; value += step) {
+    out.push(Number(value.toFixed(6)));
   }
-  return ticks;
+  return out;
+}
+
+function niceStep(range: number): number {
+  const target = range / 8;
+  const magnitude = Math.pow(10, Math.floor(Math.log10(target)));
+  const candidates = [1, 2, 5, 10].map((multiplier) => multiplier * magnitude);
+  return candidates.find((candidate) => candidate >= target) ?? 10 * magnitude;
 }

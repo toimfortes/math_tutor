@@ -158,7 +158,7 @@ export function App() {
               <Status result={turn.checkResult} />
             </header>
 
-            {turn.publicProblem.representations.includes("graph") && turn.publicProblem.graph ? (
+            {turn.publicProblem.graph ? (
               <div className="graph-panel">
                 <GraphView graph={turn.publicProblem.graph} />
               </div>

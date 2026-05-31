@@ -176,6 +176,66 @@ describe("App", () => {
     expect(host.querySelector("svg.graph-view")).not.toBeNull();
   });
 
+  it("renders a graph for two-point problems that carry a graph payload", async () => {
+    const pointsProblem = {
+      prompt: "Find the slope of the line through (1, 4) and (5, 16).",
+      ref: { problem_id: "lf_p04", realization_key: "neutral" },
+      skill_id: "lin_slope_two_points",
+      answer_type: "numeric",
+      checker: "numeric",
+      representations: ["points", "equation"],
+      graph: {
+        kind: "line",
+        x_min: -1,
+        x_max: 7,
+        y_min: -1,
+        y_max: 18,
+        points: [
+          [1, 4],
+          [5, 16],
+        ],
+        show_grid: true,
+      },
+      table: null,
+      hint_scaffold: {
+        max_safe_hint_level: 2,
+        level_0: "Find the change in each coordinate.",
+        level_1: "Slope is rise over run.",
+        level_2: "Use the two points.",
+        level_3: null,
+      },
+    };
+    const pointsTurn = {
+      session_id: "s1",
+      public_problem: pointsProblem,
+      dialogue: "Here is the next problem.",
+      pedagogical_move: "present_next_problem",
+      check_result: null,
+      xp_awarded: 0,
+      proposed_hint_level: 0,
+      guardrail_fires: [],
+      diagnostic: null,
+    };
+    const fetchMock = vi
+      .fn()
+      .mockReturnValueOnce(jsonResponse(pointsTurn))
+      .mockReturnValueOnce(jsonResponse(skillState({ skill_id: "lin_slope_two_points" })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+
+    await act(async () => {
+      root?.render(<App />);
+    });
+    await act(async () => {
+      button(host!, "Start").click();
+    });
+
+    expect(host.querySelector("svg.graph-view")).not.toBeNull();
+  });
+
   it("renders a data table when the problem uses a table representation", async () => {
     const tableProblem = {
       prompt: "Find the rate of change from the table.",

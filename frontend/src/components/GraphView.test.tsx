@@ -80,6 +80,27 @@ describe("GraphView", () => {
     expect(container.querySelector("script")).toBeNull();
   });
 
+  it("keeps grid density manageable for large coordinate ranges", () => {
+    const largeGraph: GraphSpec = {
+      kind: "line",
+      xMin: -1,
+      xMax: 8,
+      yMin: -10,
+      yMax: 100,
+      points: [
+        [0, 90],
+        [6, 30],
+      ],
+      showGrid: true,
+    };
+
+    const container = render(<GraphView graph={largeGraph} />);
+
+    const gridLines = container.querySelectorAll("line.grid-line").length;
+    expect(gridLines).toBeGreaterThan(0);
+    expect(gridLines).toBeLessThanOrEqual(28);
+  });
+
   it("does not expose the answer in accessible labels or data attributes", () => {
     const container = render(<GraphView graph={SLOPE_GRAPH} />);
 

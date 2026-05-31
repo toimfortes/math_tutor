@@ -319,6 +319,18 @@
         "points",
         "equation"
       ],
+      "graph": {
+        "kind": "line",
+        "x_min": -1,
+        "x_max": 7,
+        "y_min": -1,
+        "y_max": 18,
+        "points": [
+          [1, 4],
+          [5, 16]
+        ],
+        "show_grid": true
+      },
       "assessment_role": "practice",
       "neutral": {
         "prompt": "Find the slope of the line through (1, 4) and (5, 16).",
@@ -354,6 +366,18 @@
         "points",
         "equation"
       ],
+      "graph": {
+        "kind": "line",
+        "x_min": -1,
+        "x_max": 10,
+        "y_min": -1,
+        "y_max": 8,
+        "points": [
+          [2, 3],
+          [8, 6]
+        ],
+        "show_grid": true
+      },
       "assessment_role": "practice",
       "neutral": {
         "prompt": "Find the slope of the line through (2, 3) and (8, 6). Give an exact value.",
@@ -389,6 +413,18 @@
         "points",
         "equation"
       ],
+      "graph": {
+        "kind": "line",
+        "x_min": -1,
+        "x_max": 8,
+        "y_min": -10,
+        "y_max": 100,
+        "points": [
+          [0, 90],
+          [6, 30]
+        ],
+        "show_grid": true
+      },
       "assessment_role": "practice",
       "neutral": {
         "prompt": "Find the slope of the line through (0, 90) and (6, 30).",
@@ -630,6 +666,18 @@
         "points",
         "equation"
       ],
+      "graph": {
+        "kind": "line",
+        "x_min": -1,
+        "x_max": 5,
+        "y_min": -1,
+        "y_max": 20,
+        "points": [
+          [0, 6],
+          [3, 18]
+        ],
+        "show_grid": true
+      },
       "assessment_role": "practice",
       "neutral": {
         "prompt": "A line passes through (0, 6) and (3, 18). Write its equation as y = mx + b.",

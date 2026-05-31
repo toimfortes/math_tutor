@@ -119,6 +119,21 @@ def test_table_problems_expose_public_safe_table_payload():
     assert bank.public_problem(RealizedProblemRef("lf_p09", "neutral")).table is None
 
 
+def test_two_point_problems_expose_graph_payload_without_a_graph_tag():
+    bank = load_gold_problem_bank()
+
+    p04 = bank.public_problem(RealizedProblemRef("lf_p04", "neutral"))
+    assert p04.graph is not None
+    assert p04.graph.points == ((1, 4), (5, 16))
+    # the payload visualizes the two given points; the representation stays
+    # "points"/"equation" (it is not a read-from-graph problem).
+    assert "graph" not in p04.representations
+
+    # all four two-point problems carry a payload.
+    for problem_id in ("lf_p04", "lf_p05", "lf_p06", "lf_p12"):
+        assert bank.public_problem(RealizedProblemRef(problem_id, "neutral")).graph is not None
+
+
 def test_verifier_flags_table_representation_without_payload(tmp_path):
     data = json.loads(DEFAULT_GOLD_PATH.read_text())
     for item in data["problems"]:

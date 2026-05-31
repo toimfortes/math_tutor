@@ -135,8 +135,9 @@ def _graph_errors(data: dict[str, Any]) -> list[str]:
             continue
         if graph is None:
             continue
-        if not has_graph_rep:
-            errors.append(f"{problem_id}: graph payload requires a graph representation")
+        # A graph payload may visualize any problem (e.g. two-point problems),
+        # so its presence is not tied to the "graph" representation tag. It must
+        # still be public-safe and well-formed.
         extra_keys = set(graph) - GRAPH_ALLOWED_KEYS
         if extra_keys:
             errors.append(f"{problem_id}: graph payload has disallowed keys {sorted(extra_keys)}")
