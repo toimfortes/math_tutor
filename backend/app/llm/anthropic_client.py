@@ -45,7 +45,7 @@ class UrllibJSONTransport:
                 return json.loads(response.read().decode("utf-8"))
         except HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"Anthropic API request failed: HTTP {exc.code}: {detail}") from exc
+            raise RuntimeError(f"JSON API request failed: HTTP {exc.code}: {detail}") from exc
 
 
 @dataclass(frozen=True)
@@ -222,5 +222,6 @@ def _parse_tool_response(response: dict[str, Any]) -> LLMResponse:
                 ui_mode=str(tool_input["ui_mode"]),
                 proposed_hint_level=int(tool_input["proposed_hint_level"]),
                 teacher_check=dict(tool_input.get("teacher_check") or {}),
+                usage_metadata=dict(response.get("usage") or {}),
             )
     raise ValueError("Anthropic response did not include emit_tutor_turn tool_use")

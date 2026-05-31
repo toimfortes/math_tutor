@@ -9,7 +9,7 @@ This file pins the source URLs and operational decisions that must be re-checked
 For v1, the product may scaffold provider configuration, but it must not send live student data until a specific provider, account setting, and retention mode are recorded here.
 
 Current default decision:
-- Runtime provider: Anthropic Messages API or OpenAI API through server-side API keys only.
+- Runtime provider: Gemini API, Anthropic Messages API, or OpenAI API through server-side API keys only.
 - Browser access: no direct API-key exposure; all calls go through the backend.
 - Student data: opaque `student_id`; no real names in prompt context; redaction before logs.
 - Under-13: out of scope for v1.
@@ -31,6 +31,16 @@ Anthropic API data retention:
 - URL: https://platform.claude.com/docs/en/manage-claude/api-and-data-retention
 - Last verified: 2026-05-31
 - Current relevant facts: Anthropic documents Zero Data Retention for eligible API usage. Messages API and token counting are ZDR eligible under the documented arrangement. Some features are not ZDR eligible, and policy-violation/legal exceptions may allow retention.
+
+Gemini API request shape:
+- URL: https://ai.google.dev/api/generate-content
+- Last verified: 2026-05-31
+- Current relevant facts: `models.generateContent` uses server-side API keys, `systemInstruction`, `safetySettings`, and `generationConfig`. The local P6 smoke uses Gemini structured JSON output and captures `usageMetadata.totalTokenCount`.
+
+Gemini API data logging:
+- URL: https://ai.google.dev/gemini-api/docs/logs-policy
+- Last verified: 2026-05-31
+- Current relevant facts: Gemini API logs are developer-owned API data for billing-enabled projects. Logs expire after 55 days by default. By default, prompts/responses in logs are not used for product improvement or development; optional dataset sharing/feedback can be used for model improvement and must not include sensitive or confidential data.
 
 Desmos terms:
 - URL: https://www.desmos.com/terms

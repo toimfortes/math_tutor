@@ -13,6 +13,7 @@ class LLMResponse:
     ui_mode: str
     proposed_hint_level: int
     teacher_check: dict[str, Any] = field(default_factory=dict)
+    usage_metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class LLMClient(Protocol):

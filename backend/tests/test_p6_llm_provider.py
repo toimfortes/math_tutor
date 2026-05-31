@@ -2,6 +2,7 @@ import pytest
 
 from backend.app.config import Settings
 from backend.app.llm.anthropic_client import AnthropicLLMClient
+from backend.app.llm.gemini_client import GeminiLLMClient
 from backend.app.llm.mock_client import MockLLMClient
 from backend.app.main import create_app
 
@@ -18,6 +19,11 @@ def test_settings_load_llm_provider_from_env():
             "ANTHROPIC_HARD_MODEL": "claude-hard-model",
             "ANTHROPIC_TOP_MODEL": "claude-top-model",
             "ANTHROPIC_VERSION": "2023-06-01",
+            "GOOGLE_API_KEY": "google-test-key",
+            "GEMINI_MODEL": "gemini-test-model",
+            "GEMINI_ROUTINE_MODEL": "gemini-routine-model",
+            "GEMINI_HARD_MODEL": "gemini-hard-model",
+            "GEMINI_TOP_MODEL": "gemini-top-model",
             "LLM_ROUTING_MODE": "tiered",
             "LLM_MAX_TOKENS": "384",
             "LLM_TIMEOUT_SECONDS": "9",
@@ -33,6 +39,11 @@ def test_settings_load_llm_provider_from_env():
     assert settings.anthropic_hard_model == "claude-hard-model"
     assert settings.anthropic_top_model == "claude-top-model"
     assert settings.anthropic_version == "2023-06-01"
+    assert settings.google_api_key == "google-test-key"
+    assert settings.gemini_model == "gemini-test-model"
+    assert settings.gemini_routine_model == "gemini-routine-model"
+    assert settings.gemini_hard_model == "gemini-hard-model"
+    assert settings.gemini_top_model == "gemini-top-model"
     assert settings.llm_routing_mode == "tiered"
     assert settings.llm_max_tokens == 384
     assert settings.llm_timeout_seconds == 9
@@ -59,6 +70,23 @@ def test_app_uses_anthropic_client_when_provider_and_key_are_configured():
     )
 
     assert isinstance(app.state.turn_service.llm_client, AnthropicLLMClient)
+
+
+def test_app_rejects_gemini_provider_without_api_key():
+    with pytest.raises(ValueError, match="GOOGLE_API_KEY"):
+        create_app(Settings(app_name="Math Tutor Test", llm_provider="gemini"))
+
+
+def test_app_uses_gemini_client_when_provider_and_key_are_configured():
+    app = create_app(
+        Settings(
+            app_name="Math Tutor Test",
+            llm_provider="gemini",
+            google_api_key="google-test-key",
+        )
+    )
+
+    assert isinstance(app.state.turn_service.llm_client, GeminiLLMClient)
 
 
 class RecordingTransport:
@@ -174,3 +202,181 @@ def test_anthropic_client_uses_configured_tier_only_when_tiered_routing_enabled(
     )
 
     assert transport.calls[0]["payload"]["model"] == "claude-routine-model"
+
+
+class GeminiRecordingTransport:
+    def __init__(self):
+        self.calls = []
+
+    def post_json(self, *, url, headers, payload, timeout_seconds):
+        self.calls.append(
+            {
+                "url": url,
+                "headers": headers,
+                "payload": payload,
+                "timeout_seconds": timeout_seconds,
+            }
+        )
+        return {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {
+                                "text": (
+                                    '{"teacher_check":{"student_error_tag":"unknown",'
+                                    '"next_scaffold_id":"level_1","leak_risk":"none",'
+                                    '"uses_only_authored_scaffold":true,'
+                                    '"chosen_pedagogical_move":"offer_heuristic_hint"},'
+                                    '"dialogue":"Compare the two coordinates before choosing the rate.",'
+                                    '"pedagogical_move":"offer_heuristic_hint",'
+                                    '"ui_mode":"chat","proposed_hint_level":1}'
+                                )
+                            }
+                        ]
+                    }
+                }
+            ],
+            "usageMetadata": {
+                "promptTokenCount": 10,
+                "candidatesTokenCount": 20,
+                "totalTokenCount": 30,
+            },
+        }
+
+
+class GeminiFencedJsonTransport(GeminiRecordingTransport):
+    def post_json(self, *, url, headers, payload, timeout_seconds):
+        self.calls.append(
+            {
+                "url": url,
+                "headers": headers,
+                "payload": payload,
+                "timeout_seconds": timeout_seconds,
+            }
+        )
+        return {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {
+                                "text": (
+                                    'Here is the JSON requested:\n```json\n'
+                                    '{"teacher_check":{"student_error_tag":"unknown",'
+                                    '"next_scaffold_id":"level_1","leak_risk":"none",'
+                                    '"uses_only_authored_scaffold":true,'
+                                    '"chosen_pedagogical_move":"offer_heuristic_hint"},'
+                                    '"dialogue":"Use the relationship in the prompt.",'
+                                    '"pedagogical_move":"offer_heuristic_hint",'
+                                    '"ui_mode":"chat","proposed_hint_level":1}'
+                                    "\n```"
+                                )
+                            }
+                        ]
+                    }
+                }
+            ],
+        }
+
+
+def test_gemini_client_sends_generate_content_request_and_maps_json_output():
+    transport = GeminiRecordingTransport()
+    client = GeminiLLMClient(
+        api_key="google-test-key",
+        model="gemini-test-model",
+        transport=transport,
+        max_tokens=256,
+        timeout_seconds=5,
+    )
+
+    response = client.generate(
+        check_result="incorrect",
+        diagnostic=None,
+        presenting_next=False,
+        allowed_help_level=1,
+    )
+
+    assert response.dialogue == "Compare the two coordinates before choosing the rate."
+    assert response.pedagogical_move == "offer_heuristic_hint"
+    assert response.ui_mode == "chat"
+    assert response.proposed_hint_level == 1
+    assert response.teacher_check["leak_risk"] == "none"
+    assert response.usage_metadata["totalTokenCount"] == 30
+
+    call = transport.calls[0]
+    assert call["url"] == (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        "gemini-test-model:generateContent"
+    )
+    assert call["headers"]["x-goog-api-key"] == "google-test-key"
+    assert call["headers"]["content-type"] == "application/json"
+    assert call["timeout_seconds"] == 5
+    assert call["payload"]["contents"][0]["role"] == "user"
+    assert "systemInstruction" in call["payload"]
+    assert call["payload"]["generationConfig"]["maxOutputTokens"] == 256
+    assert call["payload"]["generationConfig"]["thinkingConfig"] == {"thinkingBudget": 0}
+    response_format = call["payload"]["generationConfig"]["responseFormat"]["text"]
+    assert response_format["mimeType"] == "APPLICATION_JSON"
+    assert response_format["schema"]["type"] == "object"
+
+
+def test_gemini_client_extracts_json_when_model_wraps_structured_output():
+    transport = GeminiFencedJsonTransport()
+    client = GeminiLLMClient(
+        api_key="google-test-key",
+        model="gemini-test-model",
+        transport=transport,
+    )
+
+    response = client.generate(
+        check_result="incorrect",
+        diagnostic=None,
+        presenting_next=False,
+        allowed_help_level=1,
+    )
+
+    assert response.dialogue == "Use the relationship in the prompt."
+    assert response.teacher_check["leak_risk"] == "none"
+
+
+def test_gemini_client_uses_strong_model_for_all_tiers_by_default():
+    transport = GeminiRecordingTransport()
+    client = GeminiLLMClient(
+        api_key="google-test-key",
+        model="gemini-strong-model",
+        routine_model="gemini-routine-model",
+        transport=transport,
+    )
+
+    client.generate(
+        check_result=None,
+        diagnostic=None,
+        presenting_next=True,
+        allowed_help_level=0,
+        tier="routine",
+    )
+
+    assert transport.calls[0]["url"].endswith("/gemini-strong-model:generateContent")
+
+
+def test_gemini_client_uses_configured_tier_only_when_tiered_routing_enabled():
+    transport = GeminiRecordingTransport()
+    client = GeminiLLMClient(
+        api_key="google-test-key",
+        model="gemini-strong-model",
+        routine_model="gemini-routine-model",
+        hard_model="gemini-hard-model",
+        routing_mode="tiered",
+        transport=transport,
+    )
+
+    client.generate(
+        check_result=None,
+        diagnostic=None,
+        presenting_next=True,
+        allowed_help_level=0,
+        tier="routine",
+    )
+
+    assert transport.calls[0]["url"].endswith("/gemini-routine-model:generateContent")

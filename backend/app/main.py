@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from backend.app.config import Settings
 from backend.app.content.seed_loader import load_gold_problem_bank
 from backend.app.llm.anthropic_client import AnthropicLLMClient
+from backend.app.llm.gemini_client import GeminiLLMClient
 from backend.app.llm.mock_client import MockLLMClient
 from backend.app.llm.types import LLMClient
 from backend.app.services.turn import InMemoryTurnStore, TurnResponse, TurnService
@@ -70,6 +71,20 @@ def _build_llm_client(settings: Settings) -> LLMClient:
             routing_mode=settings.llm_routing_mode,
             api_url=settings.anthropic_api_url,
             anthropic_version=settings.anthropic_version,
+            max_tokens=settings.llm_max_tokens,
+            timeout_seconds=settings.llm_timeout_seconds,
+        )
+    if settings.llm_provider == "gemini":
+        if not settings.google_api_key:
+            raise ValueError("GOOGLE_API_KEY is required when LLM_PROVIDER=gemini")
+        return GeminiLLMClient(
+            api_key=settings.google_api_key,
+            model=settings.gemini_model,
+            routine_model=settings.gemini_routine_model,
+            hard_model=settings.gemini_hard_model,
+            top_model=settings.gemini_top_model,
+            routing_mode=settings.llm_routing_mode,
+            api_url=settings.gemini_api_url,
             max_tokens=settings.llm_max_tokens,
             timeout_seconds=settings.llm_timeout_seconds,
         )
