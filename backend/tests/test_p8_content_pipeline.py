@@ -47,6 +47,7 @@ def test_frozen_gold_bank_verifier_runs_deterministic_ci_checks():
     assert report.safety_terms == []
     assert report.public_leaks == []
     assert report.graph_errors == []
+    assert report.table_errors == []
 
 
 def test_graph_problems_expose_public_safe_graph_payload():
@@ -95,3 +96,52 @@ def test_verifier_flags_graph_payload_with_answer_metadata(tmp_path):
 
     assert not report.ok
     assert any("lf_p07" in error for error in report.graph_errors)
+
+
+def test_table_problems_expose_public_safe_table_payload():
+    bank = load_gold_problem_bank()
+
+    p02 = bank.public_problem(RealizedProblemRef("lf_p02", "neutral"))
+    assert "table" in p02.representations
+    assert p02.table is not None
+    assert p02.table.input_label
+    assert p02.table.output_label
+    assert p02.table.rows[0] == (0, 50)
+    assert len(p02.table.rows) == 4
+
+    # table data is per-realization: the drone variant of lf_p03 differs.
+    neutral = bank.public_problem(RealizedProblemRef("lf_p03", "neutral"))
+    drone = bank.public_problem(RealizedProblemRef("lf_p03", "drone_physics"))
+    assert neutral.table is not None and drone.table is not None
+    assert drone.table.rows != neutral.table.rows
+
+    # text-only problems carry no table payload.
+    assert bank.public_problem(RealizedProblemRef("lf_p09", "neutral")).table is None
+
+
+def test_verifier_flags_table_representation_without_payload(tmp_path):
+    data = json.loads(DEFAULT_GOLD_PATH.read_text())
+    for item in data["problems"]:
+        if item["id"] == "lf_p02":
+            del item["neutral"]["table"]
+    broken = tmp_path / "broken_table.json"
+    broken.write_text(json.dumps(data))
+
+    report = verify_frozen_gold_bank(broken)
+
+    assert not report.ok
+    assert any("lf_p02" in error for error in report.table_errors)
+
+
+def test_verifier_flags_table_payload_with_answer_metadata(tmp_path):
+    data = json.loads(DEFAULT_GOLD_PATH.read_text())
+    for item in data["problems"]:
+        if item["id"] == "lf_p02":
+            item["neutral"]["table"]["canonical_answer"] = "30"
+    broken = tmp_path / "leaky_table.json"
+    broken.write_text(json.dumps(data))
+
+    report = verify_frozen_gold_bank(broken)
+
+    assert not report.ok
+    assert any("lf_p02" in error for error in report.table_errors)

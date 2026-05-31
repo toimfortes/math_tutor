@@ -23,6 +23,7 @@ class FrozenBankVerificationReport:
     role_errors: list[str]
     public_leaks: list[str]
     graph_errors: list[str]
+    table_errors: list[str]
 
 
 def verify_frozen_gold_bank(path: Path | None = None) -> FrozenBankVerificationReport:
@@ -37,9 +38,18 @@ def verify_frozen_gold_bank(path: Path | None = None) -> FrozenBankVerificationR
     role_errors = _role_errors(cases_by_ref, public_refs)
     public_leaks = _public_leaks(data)
     graph_errors = _graph_errors(data)
+    table_errors = _table_errors(data)
     safety_terms = check_gold_file(gold_path)
     realization_count = sum(1 + len(item.get("themed", {})) for item in data.get("problems", []))
-    ok = not (schema_errors or template_errors or role_errors or public_leaks or graph_errors or safety_terms)
+    ok = not (
+        schema_errors
+        or template_errors
+        or role_errors
+        or public_leaks
+        or graph_errors
+        or table_errors
+        or safety_terms
+    )
 
     return FrozenBankVerificationReport(
         ok=ok,
@@ -52,6 +62,7 @@ def verify_frozen_gold_bank(path: Path | None = None) -> FrozenBankVerificationR
         role_errors=role_errors,
         public_leaks=public_leaks,
         graph_errors=graph_errors,
+        table_errors=table_errors,
     )
 
 
@@ -145,6 +156,39 @@ def _graph_errors(data: dict[str, Any]) -> list[str]:
     return errors
 
 
+TABLE_ALLOWED_KEYS = {"input_label", "output_label", "rows"}
+
+
+def _table_errors(data: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    for item in data.get("problems", []):
+        problem_id = item.get("id", "<missing>")
+        has_table_rep = "table" in item.get("representations", [])
+        for realization_key, realization in _realizations(item).items():
+            label = f"{problem_id}/{realization_key}"
+            table = realization.get("table")
+            if has_table_rep and table is None:
+                errors.append(f"{label}: table representation requires a table payload")
+                continue
+            if table is None:
+                continue
+            if not has_table_rep:
+                errors.append(f"{label}: table payload requires a table representation")
+            extra_keys = set(table) - TABLE_ALLOWED_KEYS
+            if extra_keys:
+                errors.append(f"{label}: table payload has disallowed keys {sorted(extra_keys)}")
+            missing_keys = TABLE_ALLOWED_KEYS - set(table)
+            if missing_keys:
+                errors.append(f"{label}: table payload missing keys {sorted(missing_keys)}")
+                continue
+            rows = table["rows"]
+            if not isinstance(rows, list) or len(rows) < 2:
+                errors.append(f"{label}: table payload needs at least two rows")
+            elif not all(isinstance(row, list) and len(row) == 2 for row in rows):
+                errors.append(f"{label}: table rows must be [input, output] pairs")
+    return errors
+
+
 def _public_leaks(data: dict[str, Any]) -> list[str]:
     leaks: list[str] = []
     for item in data.get("problems", []):
@@ -191,6 +235,7 @@ def main() -> None:
             + report.role_errors
             + report.public_leaks
             + report.graph_errors
+            + report.table_errors
         )
         if report.safety_terms:
             errors.append(f"unsafe terms: {', '.join(report.safety_terms)}")

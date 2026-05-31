@@ -93,6 +93,45 @@ describe("tutor API client", () => {
     expect(started.publicProblem.graph).toBeNull();
   });
 
+  it("parses the public-safe table payload into camelCase", async () => {
+    const tableProblem = {
+      ...problem("Find the rate of change.", "lf_p02"),
+      representations: ["table"],
+      table: {
+        input_label: "Day",
+        output_label: "Tanks",
+        rows: [
+          [0, 50],
+          [1, 80],
+        ],
+      },
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(turnPayload(tableProblem)), { status: 200 }));
+
+    const started = await startSession(fetchMock, { studentId: "student-1", theme: "neutral" });
+
+    const table = started.publicProblem.table;
+    expect(table).not.toBeNull();
+    expect(table?.inputLabel).toBe("Day");
+    expect(table?.outputLabel).toBe("Tanks");
+    expect(table?.rows).toEqual([
+      [0, 50],
+      [1, 80],
+    ]);
+  });
+
+  it("leaves table null for non-table problems", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(turnPayload(problem("Prompt", "lf_p09"))), { status: 200 }));
+
+    const started = await startSession(fetchMock, { studentId: "student-1", theme: "neutral" });
+
+    expect(started.publicProblem.table).toBeNull();
+  });
+
   it("starts a session and submits a turn", async () => {
     const fetchMock = vi
       .fn()

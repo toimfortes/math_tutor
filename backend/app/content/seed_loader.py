@@ -36,6 +36,13 @@ class GraphSpec:
 
 
 @dataclass(frozen=True)
+class TableSpec:
+    input_label: str
+    output_label: str
+    rows: tuple[tuple[float, float], ...]
+
+
+@dataclass(frozen=True)
 class PublicProblem:
     ref: RealizedProblemRef
     skill_id: str
@@ -45,6 +52,7 @@ class PublicProblem:
     prompt: str
     hint_scaffold: HintScaffold
     graph: GraphSpec | None = None
+    table: TableSpec | None = None
 
 
 @dataclass(frozen=True)
@@ -93,6 +101,7 @@ def load_gold_problem_bank(path: Path | None = None) -> ProblemBank:
                 prompt=realization["prompt"],
                 hint_scaffold=scaffold,
                 graph=graph,
+                table=_parse_table(realization.get("table")),
             )
             private[ref] = PrivateProblem(
                 ref=ref,
@@ -114,4 +123,14 @@ def _parse_graph(raw: dict | None) -> GraphSpec | None:
         y_max=raw["y_max"],
         points=tuple((point[0], point[1]) for point in raw["points"]),
         show_grid=raw["show_grid"],
+    )
+
+
+def _parse_table(raw: dict | None) -> TableSpec | None:
+    if raw is None:
+        return None
+    return TableSpec(
+        input_label=raw["input_label"],
+        output_label=raw["output_label"],
+        rows=tuple((row[0], row[1]) for row in raw["rows"]),
     )

@@ -36,3 +36,21 @@ def test_turn_response_omits_graph_for_text_problems():
     data = _turn_response_to_dict(_turn_response_for("lf_p09"))
 
     assert data["public_problem"]["graph"] is None
+
+
+def test_turn_response_serializes_table_payload():
+    data = _turn_response_to_dict(_turn_response_for("lf_p02"))
+
+    table = data["public_problem"]["table"]
+    assert table["input_label"]
+    assert table["output_label"]
+    assert table["rows"] == [[0, 50], [1, 80], [2, 110], [3, 140]]
+    # the public table payload must never carry answer metadata.
+    assert "canonical_answer" not in table
+    assert "solution_method" not in table
+
+
+def test_turn_response_omits_table_for_text_problems():
+    data = _turn_response_to_dict(_turn_response_for("lf_p09"))
+
+    assert data["public_problem"]["table"] is None

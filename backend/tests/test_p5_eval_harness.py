@@ -21,6 +21,7 @@ def test_deterministic_eval_harness_includes_content_pipeline_gate(monkeypatch):
             role_errors=[],
             public_leaks=[],
             graph_errors=[],
+            table_errors=[],
         ),
         raising=False,
     )

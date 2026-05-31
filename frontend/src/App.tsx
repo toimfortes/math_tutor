@@ -3,6 +3,7 @@ import { FormEvent, useMemo, useState } from "react";
 import { getStudentState, recordRetention, recordTransfer, SkillState, skipProblem, startSession, submitTurn, TurnResponse } from "./api";
 import { ChatPanel } from "./components/ChatPanel";
 import { GraphView } from "./components/GraphView";
+import { TableView } from "./components/TableView";
 
 const THEMES = [
   { value: "space_logistics", label: "Space Logistics" },
@@ -160,6 +161,12 @@ export function App() {
             {turn.publicProblem.representations.includes("graph") && turn.publicProblem.graph ? (
               <div className="graph-panel">
                 <GraphView graph={turn.publicProblem.graph} />
+              </div>
+            ) : null}
+
+            {turn.publicProblem.representations.includes("table") && turn.publicProblem.table ? (
+              <div className="table-panel">
+                <TableView table={turn.publicProblem.table} />
               </div>
             ) : null}
 

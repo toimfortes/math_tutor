@@ -159,6 +159,13 @@ def _turn_response_to_dict(response: TurnResponse) -> dict:
                 "points": [[point[0], point[1]] for point in public.graph.points],
                 "show_grid": public.graph.show_grid,
             },
+            "table": None
+            if public.table is None
+            else {
+                "input_label": public.table.input_label,
+                "output_label": public.table.output_label,
+                "rows": [[row[0], row[1]] for row in public.table.rows],
+            },
             "hint_scaffold": {
                 "max_safe_hint_level": public.hint_scaffold.max_safe_hint_level,
                 "level_0": public.hint_scaffold.level_0,

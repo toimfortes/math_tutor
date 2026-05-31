@@ -175,4 +175,62 @@ describe("App", () => {
 
     expect(host.querySelector("svg.graph-view")).not.toBeNull();
   });
+
+  it("renders a data table when the problem uses a table representation", async () => {
+    const tableProblem = {
+      prompt: "Find the rate of change from the table.",
+      ref: { problem_id: "lf_p02", realization_key: "space_logistics" },
+      skill_id: "lin_rate_of_change",
+      answer_type: "numeric",
+      checker: "numeric",
+      representations: ["table"],
+      table: {
+        input_label: "Day",
+        output_label: "Tanks",
+        rows: [
+          [0, 50],
+          [1, 80],
+          [2, 110],
+          [3, 140],
+        ],
+      },
+      hint_scaffold: {
+        max_safe_hint_level: 2,
+        level_0: "Look at how the output changes.",
+        level_1: "Rate is change in output over change in input.",
+        level_2: "Compare two rows.",
+        level_3: null,
+      },
+    };
+    const tableTurn = {
+      session_id: "s1",
+      public_problem: tableProblem,
+      dialogue: "Here is the next problem.",
+      pedagogical_move: "present_next_problem",
+      check_result: null,
+      xp_awarded: 0,
+      proposed_hint_level: 0,
+      guardrail_fires: [],
+      diagnostic: null,
+    };
+    const fetchMock = vi
+      .fn()
+      .mockReturnValueOnce(jsonResponse(tableTurn))
+      .mockReturnValueOnce(jsonResponse(skillState({ skill_id: "lin_rate_of_change" })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+
+    await act(async () => {
+      root?.render(<App />);
+    });
+    await act(async () => {
+      button(host!, "Start").click();
+    });
+
+    expect(host.querySelector("table.data-table")).not.toBeNull();
+    expect(host.textContent).toContain("Tanks");
+  });
 });
