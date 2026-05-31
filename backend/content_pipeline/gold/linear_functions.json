@@ -1,0 +1,703 @@
+{
+  "schema_version": "1.0",
+  "domain": "linear_functions",
+  "description": "Seed content for the vertical slice in math-tutor-build-plan.md (Phase 1 + 14). Contains the linear-functions skill graph and a problem bank with hand-authored deep-themed variants.",
+  "usage_notes": [
+    "Each problem has a `neutral` realization plus `themed` realizations. PREFER the themed realization matching the student's chosen theme; runtime must display the selected `prompt` exactly. The LLM may respond around it but MUST NOT rewrite, re-narrate, embellish, or change the problem text, numbers, units, roles, or relationships.",
+    "Each realization carries its OWN `canonical_answer` because realistic numbers differ across domains. The code checker (domain/checker.py) grades against the realization actually shown to the student.",
+    "These authored variants also serve as FEW-SHOT EXEMPLARS for the contextualizer (domain/contextualizer.py) when theming a skill for which no variant is pre-written. They demonstrate DEEP theming: the math genuinely arises from the situation (slope = travel rate / resource use / velocity; intercept = starting value), never a cosmetic rename.",
+    "`canonical_answer` uses the variable named in that realization's prompt (x, d, t, k, ...). The checker MUST sympify with: implicit-multiplication enabled, '^' converted to '**', numeric tolerance for decimals, and the prompt's variable symbol.",
+    "`solution_method` is private/offline source material. Runtime prompts receive only a derived `hint_scaffold` that excludes final answers and immediate next computed values.",
+    "difficulty: 1 = easiest ... 4 = hardest.",
+    "assessment_role: 'practice' (default) or 'transfer' is a candidate marker only. transfer_passed is computed by the scheduler relative to the student's contexts_seen, prior RealizedProblemRefs, representation history, and theme history; the static content tag is not sufficient by itself. Retention is timing-based and reuses any item, so no special content is needed."
+  ],
+  "themes": [
+    {
+      "id": "space_logistics",
+      "label": "Space colony logistics",
+      "generative_for": [
+        "lin_rate_of_change",
+        "lin_slope_two_points",
+        "lin_slope_from_graph",
+        "lin_y_intercept",
+        "lin_equation_slope_intercept",
+        "lin_evaluate",
+        "lin_interpret_meaning"
+      ],
+      "mapping_hint": "Slope = a rate (km traveled per day, litres used per hour, crates delivered per day). y-intercept = a starting stock or starting position. Negative slope = something being consumed."
+    },
+    {
+      "id": "drone_physics",
+      "label": "Drone / flight motion",
+      "generative_for": [
+        "lin_rate_of_change",
+        "lin_slope_two_points",
+        "lin_slope_from_graph",
+        "lin_y_intercept",
+        "lin_equation_slope_intercept",
+        "lin_evaluate",
+        "lin_interpret_meaning"
+      ],
+      "mapping_hint": "Linear (not quadratic) aspects only: horizontal position vs time (slope = constant horizontal velocity); vertical velocity vs time (slope = -g ~ -10, a genuinely deep link); steady climb/descent. Do NOT theme linear skills onto height-vs-time, which is parabolic."
+    }
+  ],
+  "skills": [
+    {
+      "id": "coord_plane_basics",
+      "name": "Read and write coordinates",
+      "standard_tags": [
+        "CCSS.6.NS.C.6",
+        "GCSE-A8"
+      ],
+      "prerequisites": [],
+      "description": "Locate and name points (x, y) on the coordinate plane."
+    },
+    {
+      "id": "lin_rate_of_change",
+      "name": "Rate of change as constant slope",
+      "standard_tags": [
+        "CCSS.8.F.B.4",
+        "CCSS.HSF-IF.B.6",
+        "GCSE-R11",
+        "GCSE-A14"
+      ],
+      "prerequisites": [
+        "coord_plane_basics"
+      ],
+      "description": "Recognise a constant rate of change from a table or situation."
+    },
+    {
+      "id": "lin_slope_two_points",
+      "name": "Slope from two points",
+      "standard_tags": [
+        "CCSS.8.EE.B.5",
+        "CCSS.HSF-IF.B.6",
+        "GCSE-A10"
+      ],
+      "prerequisites": [
+        "lin_rate_of_change"
+      ],
+      "description": "Compute slope = (y2 - y1)/(x2 - x1)."
+    },
+    {
+      "id": "lin_slope_from_graph",
+      "name": "Slope from a graph",
+      "standard_tags": [
+        "CCSS.8.EE.B.6",
+        "GCSE-A10"
+      ],
+      "prerequisites": [
+        "coord_plane_basics",
+        "lin_rate_of_change"
+      ],
+      "description": "Read slope as rise over run from a graphed line."
+    },
+    {
+      "id": "lin_y_intercept",
+      "name": "Identify the y-intercept",
+      "standard_tags": [
+        "CCSS.HSF-IF.B.4",
+        "GCSE-A9"
+      ],
+      "prerequisites": [
+        "coord_plane_basics"
+      ],
+      "description": "Identify the starting value / where the line meets the vertical axis."
+    },
+    {
+      "id": "lin_equation_slope_intercept",
+      "name": "Write y = mx + b",
+      "standard_tags": [
+        "CCSS.HSA-CED.A.2",
+        "CCSS.HSF-LE.A.2",
+        "GCSE-A9",
+        "GCSE-A12"
+      ],
+      "prerequisites": [
+        "lin_slope_two_points",
+        "lin_y_intercept"
+      ],
+      "description": "Construct the equation of a line from slope and intercept, two points, or context."
+    },
+    {
+      "id": "lin_evaluate",
+      "name": "Evaluate / solve a linear model",
+      "standard_tags": [
+        "CCSS.HSF-IF.A.2",
+        "GCSE-A17"
+      ],
+      "prerequisites": [
+        "lin_equation_slope_intercept"
+      ],
+      "description": "Find y given x, or solve for x given y, using a linear equation."
+    },
+    {
+      "id": "lin_interpret_meaning",
+      "name": "Interpret slope and intercept in context",
+      "standard_tags": [
+        "CCSS.HSF-LE.B.5",
+        "CCSS.HSS-ID.C.7",
+        "GCSE-A14",
+        "GCSE-R14"
+      ],
+      "prerequisites": [
+        "lin_evaluate"
+      ],
+      "description": "Explain what the slope and intercept mean for the real situation."
+    }
+  ],
+  "problems": [
+    {
+      "id": "lf_p01",
+      "skill_id": "coord_plane_basics",
+      "difficulty": 1,
+      "answer_type": "ordered_pair",
+      "checker": "ordered_pair",
+      "representations": [
+        "grid"
+      ],
+      "assessment_role": "practice",
+      "neutral": {
+        "prompt": "A point is 4 units to the right of the origin and 3 units up. Write its coordinates as (x, y).",
+        "canonical_answer": "(4, 3)",
+        "solution_method": "Right is the +x direction and up is the +y direction, so the point is (4, 3)."
+      },
+      "themed": {
+        "space_logistics": {
+          "prompt": "On a colony map the origin is your base station. A research station lies 4 km east and 3 km north. Give its map coordinates (east, north) in km.",
+          "canonical_answer": "(4, 3)",
+          "solution_method": "East acts as +x, north as +y, so the station is at (4, 3)."
+        },
+        "drone_physics": {
+          "prompt": "On a survey chart the sensor sits at the origin. A sensor marker is 4 units to the right (x) and 3 units up (y). Give the coordinates (x, y).",
+          "canonical_answer": "(4, 3)",
+          "solution_method": "Right is +x and up is +y, so the marked point is (4, 3)."
+        }
+      },
+      "hint_scaffold": {
+        "max_safe_hint_level": 2,
+        "level_0": "Think about the horizontal direction first, then the vertical direction.",
+        "level_1": "Coordinates are written as (x, y): horizontal amount, then vertical amount.",
+        "level_2": "Use the right/east amount for x and the up/north amount for y, without changing their order."
+      }
+    },
+    {
+      "id": "lf_p02",
+      "skill_id": "lin_rate_of_change",
+      "difficulty": 2,
+      "answer_type": "numeric",
+      "checker": "numeric",
+      "representations": [
+        "table"
+      ],
+      "assessment_role": "practice",
+      "neutral": {
+        "prompt": "A table shows y at x = 0, 1, 2, 3 as 50, 80, 110, 140. What is the constant rate of change of y per unit x?",
+        "canonical_answer": "30",
+        "solution_method": "Each step of 1 in x increases y by 80-50 = 30, and the jumps are equal, so the constant rate is 30."
+      },
+      "themed": {
+        "space_logistics": {
+          "prompt": "A colony depot's water-tank count by day (a cargo route resupplies each night): Day 0 = 50, Day 1 = 80, Day 2 = 110, Day 3 = 140. What is the daily rate of change in tanks?",
+          "canonical_answer": "30",
+          "solution_method": "Stock rises by 30 tanks every day (80-50, 110-80, 140-110 are all 30), so the rate is +30 tanks per day."
+        },
+        "drone_physics": {
+          "prompt": "A drone climbs steadily. Its altitude in metres at t = 0, 1, 2, 3 seconds is 50, 80, 110, 140. What is the rate of change of altitude per second?",
+          "canonical_answer": "30",
+          "solution_method": "Altitude rises 30 m each second (equal jumps), so the rate of climb is 30 m/s."
+        }
+      },
+      "hint_scaffold": {
+        "max_safe_hint_level": 2,
+        "level_0": "Look for how the output changes as the input changes.",
+        "level_1": "Rate of change is change in output divided by change in input.",
+        "level_2": "Compare two matching rows, set up output change over input change, and keep the sign from increasing or decreasing output."
+      }
+    },
+    {
+      "id": "lf_p03",
+      "skill_id": "lin_rate_of_change",
+      "difficulty": 2,
+      "answer_type": "numeric",
+      "checker": "numeric",
+      "representations": [
+        "table"
+      ],
+      "assessment_role": "transfer",
+      "neutral": {
+        "prompt": "A table shows y at x = 0, 2, 4, 6 as 200, 170, 140, 110. What is the rate of change of y per unit x?",
+        "canonical_answer": "-15",
+        "solution_method": "y falls by 30 each time x rises by 2, so per unit x the rate is -30/2 = -15. (Note x steps by 2, not 1.)"
+      },
+      "themed": {
+        "space_logistics": {
+          "prompt": "A rover battery drains during a route survey. Charge remaining vs hours traveled: 0 h = 200, 2 h = 170, 4 h = 140, 6 h = 110. What is the rate of change of charge per hour?",
+          "canonical_answer": "-15",
+          "solution_method": "Charge drops 30 units every 2 hours, so per hour the rate is -30/2 = -15 units/h. The minus sign means it is being consumed."
+        },
+        "drone_physics": {
+          "prompt": "A weather balloon ascending under gravity slows steadily. Its vertical velocity (m/s) is 30 at t = 0, 20 at t = 1, 10 at t = 2, 0 at t = 3 seconds. What is the rate of change of velocity per second?",
+          "canonical_answer": "-10",
+          "solution_method": "Velocity falls 10 m/s each second, so the rate is -10 m/s per second. That slope is essentially -g, the acceleration of gravity."
+        }
+      },
+      "hint_scaffold": {
+        "max_safe_hint_level": 2,
+        "level_0": "Look for how the output changes as the input changes.",
+        "level_1": "Rate of change is change in output divided by change in input.",
+        "level_2": "Compare two matching rows, set up output change over input change, and keep the sign from increasing or decreasing output."
+      }
+    },
+    {
+      "id": "lf_p04",
+      "skill_id": "lin_slope_two_points",
+      "difficulty": 2,
+      "answer_type": "numeric",
+      "checker": "numeric",
+      "representations": [
+        "points",
+        "equation"
+      ],
+      "assessment_role": "practice",
+      "neutral": {
+        "prompt": "Find the slope of the line through (1, 4) and (5, 16).",
+        "canonical_answer": "3",
+        "solution_method": "slope = (16 - 4)/(5 - 1) = 12/4 = 3."
+      },
+      "themed": {
+        "space_logistics": {
+          "prompt": "Two route logs from a steady rover trip: at hour 1 the rover was 4 km past the habitat, at hour 5 it was 16 km past. What is the travel rate (the slope) in km/h?",
+          "canonical_answer": "3",
+          "solution_method": "rate = (16 - 4)/(5 - 1) = 12/4 = 3 km/h."
+        },
+        "drone_physics": {
+          "prompt": "A drone moves at constant horizontal speed. Its horizontal position is 4 m at t = 1 s and 16 m at t = 5 s. Find its horizontal speed (the slope).",
+          "canonical_answer": "3",
+          "solution_method": "speed = (16 - 4)/(5 - 1) = 12/4 = 3 m/s."
+        }
+      },
+      "hint_scaffold": {
+        "max_safe_hint_level": 2,
+        "level_0": "Use the two points to compare vertical change with horizontal change.",
+        "level_1": "Slope is change in y divided by change in x.",
+        "level_2": "Set up (second y minus first y) over (second x minus first x), then simplify carefully."
+      }
+    },
+    {
+      "id": "lf_p05",
+      "skill_id": "lin_slope_two_points",
+      "difficulty": 3,
+      "answer_type": "expression",
+      "checker": "sympy_equiv",
+      "representations": [
+        "points",
+        "equation"
+      ],
+      "assessment_role": "practice",
+      "neutral": {
+        "prompt": "Find the slope of the line through (2, 3) and (8, 6). Give an exact value.",
+        "canonical_answer": "1/2",
+        "solution_method": "slope = (6 - 3)/(8 - 2) = 3/6 = 1/2 (equivalently 0.5)."
+      },
+      "themed": {
+        "space_logistics": {
+          "prompt": "Solar panel stock (in thousands of panels) under steady resupply: 3 on day 2, and 6 on day 8. What is the rate per day? Give an exact value.",
+          "canonical_answer": "1/2",
+          "solution_method": "rate = (6 - 3)/(8 - 2) = 3/6 = 1/2 thousand units per day."
+        },
+        "drone_physics": {
+          "prompt": "A weather balloon is winched up steadily: height 3 m at t = 2 s and 6 m at t = 8 s. What is its rate of rise? Give an exact value.",
+          "canonical_answer": "1/2",
+          "solution_method": "rate = (6 - 3)/(8 - 2) = 3/6 = 1/2 m/s."
+        }
+      },
+      "hint_scaffold": {
+        "max_safe_hint_level": 2,
+        "level_0": "Use the two points to compare vertical change with horizontal change.",
+        "level_1": "Slope is change in y divided by change in x.",
+        "level_2": "Set up (second y minus first y) over (second x minus first x), then simplify carefully."
+      }
+    },
+    {
+      "id": "lf_p06",
+      "skill_id": "lin_slope_two_points",
+      "difficulty": 3,
+      "answer_type": "numeric",
+      "checker": "numeric",
+      "representations": [
+        "points",
+        "equation"
+      ],
+      "assessment_role": "practice",
+      "neutral": {
+        "prompt": "Find the slope of the line through (0, 90) and (6, 30).",
+        "canonical_answer": "-10",
+        "solution_method": "slope = (30 - 90)/(6 - 0) = -60/6 = -10."
+      },
+      "themed": {
+        "space_logistics": {
+          "prompt": "During a rover trip a vehicle's fuel (litres) is 90 at hour 0 and 30 at hour 6. What is the rate of change of fuel per hour?",
+          "canonical_answer": "-10",
+          "solution_method": "rate = (30 - 90)/(6 - 0) = -60/6 = -10 L/h; negative because fuel is being used."
+        },
+        "drone_physics": {
+          "prompt": "A drone's upward velocity is 90 m/s at t = 0 and 30 m/s at t = 6 s. Find the slope (its acceleration).",
+          "canonical_answer": "-10",
+          "solution_method": "slope = (30 - 90)/(6 - 0) = -60/6 = -10 m/s per second, essentially -g."
+        }
+      },
+      "hint_scaffold": {
+        "max_safe_hint_level": 2,
+        "level_0": "Use the two points to compare vertical change with horizontal change.",
+        "level_1": "Slope is change in y divided by change in x.",
+        "level_2": "Set up (second y minus first y) over (second x minus first x), then simplify carefully."
+      }
+    },
+    {
+      "id": "lf_p07",
+      "skill_id": "lin_slope_from_graph",
+      "difficulty": 2,
+      "answer_type": "numeric",
+      "checker": "numeric",
+      "representations": [
+        "graph"
+      ],
+      "assessment_role": "practice",
+      "neutral": {
+        "prompt": "A line on a graph rises 2 units for every 1 unit it moves to the right. What is its slope?",
+        "canonical_answer": "2",
+        "solution_method": "slope = rise/run = 2/1 = 2."
+      },
+      "themed": {
+        "space_logistics": {
+          "prompt": "On a supply chart, the 'crates delivered' line rises 2 crates for every 1 day moved to the right. What is its slope?",
+          "canonical_answer": "2",
+          "solution_method": "slope = rise/run = 2 crates / 1 day = 2."
+        },
+        "drone_physics": {
+          "prompt": "On an altitude-time graph, a climbing drone's altitude line goes up 2 m for every 1 s to the right. What is its slope?",
+          "canonical_answer": "2",
+          "solution_method": "slope = rise/run = 2 m / 1 s = 2."
+        }
+      },
+      "hint_scaffold": {
+        "max_safe_hint_level": 2,
+        "level_0": "Find the rise and the run from the graph description.",
+        "level_1": "Slope is rise divided by run.",
+        "level_2": "Write the vertical change over the horizontal change, keeping the exact fraction if it is not whole."
+      }
+    },
+    {
+      "id": "lf_p08",
+      "skill_id": "lin_slope_from_graph",
+      "difficulty": 3,
+      "answer_type": "expression",
+      "checker": "sympy_equiv",
+      "representations": [
+        "graph"
+      ],
+      "assessment_role": "transfer",
+      "neutral": {
+        "prompt": "A line passes through grid points, going up 3 squares for every 4 squares to the right. What is its slope? Give an exact value.",
+        "canonical_answer": "3/4",
+        "solution_method": "slope = rise/run = 3/4 (equivalently 0.75)."
+      },
+      "themed": {
+        "space_logistics": {
+          "prompt": "A 'distance traveled vs fuel used' chart climbs 3 km for every 4 litres used. What is the slope, in km per litre? Give an exact value.",
+          "canonical_answer": "3/4",
+          "solution_method": "slope = rise/run = 3 km / 4 L = 3/4 km per litre."
+        },
+        "drone_physics": {
+          "prompt": "A service ramp's profile rises 3 m for every 4 m measured horizontally. What is the slope of the ramp? Give an exact value.",
+          "canonical_answer": "3/4",
+          "solution_method": "slope = rise/run = 3/4."
+        }
+      },
+      "hint_scaffold": {
+        "max_safe_hint_level": 2,
+        "level_0": "Find the rise and the run from the graph description.",
+        "level_1": "Slope is rise divided by run.",
+        "level_2": "Write the vertical change over the horizontal change, keeping the exact fraction if it is not whole."
+      }
+    },
+    {
+      "id": "lf_p09",
+      "skill_id": "lin_y_intercept",
+      "difficulty": 1,
+      "answer_type": "numeric",
+      "checker": "numeric",
+      "representations": [
+        "equation"
+      ],
+      "assessment_role": "practice",
+      "neutral": {
+        "prompt": "What is the y-intercept of y = 4x + 7?",
+        "canonical_answer": "7",
+        "solution_method": "In y = mx + b, the y-intercept is b. Here b = 7."
+      },
+      "themed": {
+        "space_logistics": {
+          "prompt": "A depot model is S = 4d + 7, where S is supplies and d is days. How many supplies are there at the start (d = 0)?",
+          "canonical_answer": "7",
+          "solution_method": "At d = 0, S = 4(0) + 7 = 7. The starting value is the intercept, 7."
+        },
+        "drone_physics": {
+          "prompt": "A horizontal-position model is x = 4t + 7 (t in seconds). What is the starting position at t = 0?",
+          "canonical_answer": "7",
+          "solution_method": "At t = 0, x = 4(0) + 7 = 7. The intercept gives the start position, 7."
+        }
+      },
+      "hint_scaffold": {
+        "max_safe_hint_level": 2,
+        "level_0": "The intercept is the starting value on the vertical axis.",
+        "level_1": "For an equation in slope-intercept form, look for the constant term.",
+        "level_2": "For a graph or context, identify the value when the input is zero."
+      }
+    },
+    {
+      "id": "lf_p10",
+      "skill_id": "lin_y_intercept",
+      "difficulty": 2,
+      "answer_type": "numeric",
+      "checker": "numeric",
+      "representations": [
+        "graph"
+      ],
+      "assessment_role": "practice",
+      "neutral": {
+        "prompt": "A line crosses the vertical axis at the point (0, 12). What is its y-intercept?",
+        "canonical_answer": "12",
+        "solution_method": "The y-intercept is the y-value where x = 0, so it is 12."
+      },
+      "themed": {
+        "space_logistics": {
+          "prompt": "A fuel graph meets the vertical axis at (0, 12): the tank held 12 (hundred litres) before the trip began. State the y-intercept.",
+          "canonical_answer": "12",
+          "solution_method": "At the start (x = 0, day 0) the value is 12, so the y-intercept is 12."
+        },
+        "drone_physics": {
+          "prompt": "An altitude-time graph crosses the vertical axis at (0, 12): the platform sits 12 m above the valley floor. State the y-intercept.",
+          "canonical_answer": "12",
+          "solution_method": "At t = 0 the altitude is 12 m, so the y-intercept is 12."
+        }
+      },
+      "hint_scaffold": {
+        "max_safe_hint_level": 2,
+        "level_0": "The intercept is the starting value on the vertical axis.",
+        "level_1": "For an equation in slope-intercept form, look for the constant term.",
+        "level_2": "For a graph or context, identify the value when the input is zero."
+      }
+    },
+    {
+      "id": "lf_p11",
+      "skill_id": "lin_equation_slope_intercept",
+      "difficulty": 3,
+      "answer_type": "expression",
+      "checker": "sympy_equiv",
+      "representations": [
+        "equation"
+      ],
+      "assessment_role": "practice",
+      "neutral": {
+        "prompt": "Write the equation of a line with slope 5 and y-intercept 20 in the form y = mx + b.",
+        "canonical_answer": "5*x + 20",
+        "solution_method": "Substitute m = 5 and b = 20 into y = mx + b to get y = 5x + 20."
+      },
+      "themed": {
+        "space_logistics": {
+          "prompt": "A depot starts with 20 crates and receives 5 crates per day. Write supplies S as a function of days d, in the form S = m*d + b.",
+          "canonical_answer": "5*d + 20",
+          "solution_method": "Rate m = 5 (crates/day), start b = 20, so S = 5d + 20."
+        },
+        "drone_physics": {
+          "prompt": "A drone begins at 20 m altitude and climbs 5 m each second. Write altitude A as a function of time t, in the form A = m*t + b.",
+          "canonical_answer": "5*t + 20",
+          "solution_method": "Rate m = 5 (m/s), start b = 20, so A = 5t + 20."
+        }
+      },
+      "hint_scaffold": {
+        "max_safe_hint_level": 2,
+        "level_0": "An equation in this form combines a rate and a starting value.",
+        "level_1": "Use the pattern output = rate times input plus starting value.",
+        "level_2": "Identify the slope and intercept first, then place them into the slope-intercept form without evaluating a final answer in the hint."
+      }
+    },
+    {
+      "id": "lf_p12",
+      "skill_id": "lin_equation_slope_intercept",
+      "difficulty": 3,
+      "answer_type": "expression",
+      "checker": "sympy_equiv",
+      "representations": [
+        "points",
+        "equation"
+      ],
+      "assessment_role": "practice",
+      "neutral": {
+        "prompt": "A line passes through (0, 6) and (3, 18). Write its equation as y = mx + b.",
+        "canonical_answer": "4*x + 6",
+        "solution_method": "slope = (18 - 6)/(3 - 0) = 12/3 = 4; the point (0, 6) gives b = 6, so y = 4x + 6."
+      },
+      "themed": {
+        "space_logistics": {
+          "prompt": "At day 0 a depot has 6 (hundred panels); by day 3 it has 18 (hundred), under steady resupply. Write panels P as P = m*d + b.",
+          "canonical_answer": "4*d + 6",
+          "solution_method": "rate = (18 - 6)/(3 - 0) = 4; start b = 6, so P = 4d + 6."
+        },
+        "drone_physics": {
+          "prompt": "A balloon is at 6 m at t = 0 and 18 m at t = 3 s, rising steadily. Write height H as H = m*t + b.",
+          "canonical_answer": "4*t + 6",
+          "solution_method": "rate = (18 - 6)/(3 - 0) = 4 m/s; start b = 6, so H = 4t + 6."
+        }
+      },
+      "hint_scaffold": {
+        "max_safe_hint_level": 2,
+        "level_0": "An equation in this form combines a rate and a starting value.",
+        "level_1": "Use the pattern output = rate times input plus starting value.",
+        "level_2": "Identify the slope and intercept first, then place them into the slope-intercept form without evaluating a final answer in the hint."
+      }
+    },
+    {
+      "id": "lf_p13",
+      "skill_id": "lin_equation_slope_intercept",
+      "difficulty": 4,
+      "answer_type": "expression",
+      "checker": "sympy_equiv",
+      "representations": [
+        "equation"
+      ],
+      "assessment_role": "transfer",
+      "neutral": {
+        "prompt": "A line has slope -8 and passes through (2, 50). Write its equation as y = mx + b.",
+        "canonical_answer": "-8*x + 66",
+        "solution_method": "b = y - mx = 50 - (-8)(2) = 50 + 16 = 66, so y = -8x + 66."
+      },
+      "themed": {
+        "space_logistics": {
+          "prompt": "A rover uses 8 litres per km. After 2 km it has 50 litres left. Write fuel F as a function of distance k, in the form F = m*k + b.",
+          "canonical_answer": "-8*k + 66",
+          "solution_method": "m = -8 (L/km); b = 50 - (-8)(2) = 66, so F = -8k + 66 (it started with 66 L)."
+        },
+        "drone_physics": {
+          "prompt": "A training drone reduces its speed by 8 m/s each second. At t = 2 s its speed is 50 m/s. Write speed v as a function of t, in the form v = m*t + b.",
+          "canonical_answer": "-8*t + 66",
+          "solution_method": "m = -8 (m/s per s); b = 50 - (-8)(2) = 66, so v = -8t + 66 (initial speed 66 m/s)."
+        }
+      },
+      "hint_scaffold": {
+        "max_safe_hint_level": 2,
+        "level_0": "An equation in this form combines a rate and a starting value.",
+        "level_1": "Use the pattern output = rate times input plus starting value.",
+        "level_2": "Identify the slope and intercept first, then place them into the slope-intercept form without evaluating a final answer in the hint."
+      }
+    },
+    {
+      "id": "lf_p14",
+      "skill_id": "lin_evaluate",
+      "difficulty": 2,
+      "answer_type": "numeric",
+      "checker": "numeric",
+      "representations": [
+        "equation"
+      ],
+      "assessment_role": "practice",
+      "neutral": {
+        "prompt": "For y = 3x + 4, find y when x = 10.",
+        "canonical_answer": "34",
+        "solution_method": "y = 3(10) + 4 = 30 + 4 = 34."
+      },
+      "themed": {
+        "space_logistics": {
+          "prompt": "Supplies follow S = 3d + 4. How many supplies are there after d = 10 days?",
+          "canonical_answer": "34",
+          "solution_method": "S = 3(10) + 4 = 34."
+        },
+        "drone_physics": {
+          "prompt": "Horizontal distance follows x = 3t + 4. Where is the object at t = 10 s?",
+          "canonical_answer": "34",
+          "solution_method": "x = 3(10) + 4 = 34 m."
+        }
+      },
+      "hint_scaffold": {
+        "max_safe_hint_level": 2,
+        "level_0": "Decide which variable is given and which one you need to find.",
+        "level_1": "Substitute the known value into the linear equation or isolate the unknown variable.",
+        "level_2": "Set up the substitution or inverse operation step, then do the arithmetic yourself."
+      }
+    },
+    {
+      "id": "lf_p15",
+      "skill_id": "lin_evaluate",
+      "difficulty": 3,
+      "answer_type": "numeric",
+      "checker": "numeric",
+      "representations": [
+        "equation"
+      ],
+      "assessment_role": "transfer",
+      "neutral": {
+        "prompt": "For y = 6x + 12, find x when y = 60.",
+        "canonical_answer": "8",
+        "solution_method": "60 = 6x + 12, so 6x = 48 and x = 8."
+      },
+      "themed": {
+        "space_logistics": {
+          "prompt": "A depot model is S = 6d + 12. After how many days will supplies reach S = 60?",
+          "canonical_answer": "8",
+          "solution_method": "60 = 6d + 12, so 6d = 48 and d = 8 days."
+        },
+        "drone_physics": {
+          "prompt": "Altitude follows A = 6t + 12. At what time t does the drone reach A = 60 m?",
+          "canonical_answer": "8",
+          "solution_method": "60 = 6t + 12, so 6t = 48 and t = 8 s."
+        }
+      },
+      "hint_scaffold": {
+        "max_safe_hint_level": 2,
+        "level_0": "Decide which variable is given and which one you need to find.",
+        "level_1": "Substitute the known value into the linear equation or isolate the unknown variable.",
+        "level_2": "Set up the substitution or inverse operation step, then do the arithmetic yourself."
+      }
+    },
+    {
+      "id": "lf_p16",
+      "skill_id": "lin_interpret_meaning",
+      "difficulty": 3,
+      "answer_type": "numeric",
+      "checker": "numeric",
+      "representations": [
+        "equation"
+      ],
+      "assessment_role": "practice",
+      "grading_note": "is_correct is graded ONLY on the signed number below. The qualitative meaning is drawn out by the tutor using `interpretation_rubric` but does NOT flip is_correct (code owns truth; prose is not code-checkable in v1).",
+      "neutral": {
+        "prompt": "A quantity is modelled by y = -25x + 300. By how much does y change each time x increases by 1? Give a signed number.",
+        "canonical_answer": "-25",
+        "solution_method": "The slope is the change in y per unit x. Here it is -25, so y falls by 25 for each increase of 1 in x.",
+        "interpretation_rubric": "Slope -25 = decreasing by 25 per unit. Intercept 300 = the starting value at x = 0. A negative slope means the quantity is shrinking."
+      },
+      "themed": {
+        "space_logistics": {
+          "prompt": "Fuel follows F = -25d + 300 (litres vs days). By how much does fuel change each day? Give a signed number.",
+          "canonical_answer": "-25",
+          "solution_method": "The slope -25 is the daily change: fuel drops 25 L per day.",
+          "interpretation_rubric": "Slope -25 = losing 25 L/day. Intercept 300 = the rover started with 300 L. Negative slope = consumption."
+        },
+        "drone_physics": {
+          "prompt": "Vertical velocity follows v = -10t + 30 (m/s). By how much does v change each second? Give a signed number.",
+          "canonical_answer": "-10",
+          "solution_method": "The slope -10 is the change per second: velocity drops 10 m/s each second.",
+          "interpretation_rubric": "Slope -10 = -g, gravity slowing the upward motion. Intercept 30 = initial speed. The object decelerates, stops, then falls."
+        }
+      },
+      "hint_scaffold": {
+        "max_safe_hint_level": 2,
+        "level_0": "Connect the sign and size of the rate to the situation.",
+        "level_1": "The coefficient of the input tells the signed change per one unit of input.",
+        "level_2": "State the signed rate only; the tutor can discuss the meaning after your numeric answer."
+      }
+    }
+  ]
+}
