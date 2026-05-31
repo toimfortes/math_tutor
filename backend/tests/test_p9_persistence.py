@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import pytest
 
+from fastapi.testclient import TestClient
+
+from backend.app.config import Settings
 from backend.app.content.seed_loader import RealizedProblemRef, load_gold_problem_bank
 from backend.app.domain.mastery import ProblemAttempt, SubmissionEvent
 from backend.app.llm.mock_client import MockLLMClient
+from backend.app.main import create_app
 from backend.app.services.session_store import (
     SqliteSessionStore,
     StaleSessionError,
@@ -77,6 +81,56 @@ def test_sqlite_store_optimistic_locking_rejects_stale_writes(tmp_path):
     store.save(first)  # succeeds and bumps the version
     with pytest.raises(StaleSessionError):
         store.save(second)  # writes against the now-stale version
+
+
+def test_turn_service_state_survives_a_fresh_service_on_the_same_db(tmp_path):
+    db = tmp_path / "live.db"
+    bank = load_gold_problem_bank()
+    service = TurnService(
+        problem_bank=bank, llm_client=MockLLMClient(), store=SqliteSessionStore(db, bank.public_problem)
+    )
+    start = service.start_session(student_id="stu", theme="space_logistics")
+    skill_id = start.public_problem.skill_id
+    first = service.submit_turn(start.session_id, idempotency_key="t1", answer="(4, 3)")
+
+    # a brand-new store + service on the same database file sees the saved work.
+    fresh = TurnService(
+        problem_bank=bank, llm_client=MockLLMClient(), store=SqliteSessionStore(db, bank.public_problem)
+    )
+    skill = fresh.skill_state(start.session_id, skill_id=skill_id)
+    assert skill.attempts  # the earlier attempt survived the "restart"
+
+    # the idempotency cache survived too: retrying the turn returns the cache.
+    again = fresh.submit_turn(start.session_id, idempotency_key="t1", answer="(4, 3)")
+    assert again.dialogue == first.dialogue
+    assert again.public_problem.ref == first.public_problem.ref
+
+
+def test_app_persists_sessions_to_the_configured_sqlite_file(tmp_path):
+    settings = Settings.from_env({"SESSION_DB_PATH": str(tmp_path / "app.db")})
+
+    first_app = TestClient(create_app(settings))
+    start = first_app.post("/session/start", json={"student_id": "stu", "theme": "space_logistics"}).json()
+    session_id = start["session_id"]
+    skill_id = start["public_problem"]["skill_id"]
+    first_app.post("/turn", json={"session_id": session_id, "idempotency_key": "t1", "answer": "(4, 3)"})
+
+    # a freshly constructed app on the same db file still sees the session.
+    second_app = TestClient(create_app(settings))
+    state = second_app.get(f"/student/stu/state", params={"session_id": session_id, "skill_id": skill_id})
+
+    assert state.status_code == 200
+    assert state.json()["skill_id"] == skill_id
+    assert state.json()["attempt_count"] >= 1
+
+
+def test_app_defaults_to_in_memory_store_without_a_db_path():
+    settings = Settings.from_env({})
+
+    client = TestClient(create_app(settings))
+    start = client.post("/session/start", json={"student_id": "stu", "theme": "neutral"}).json()
+
+    assert start["session_id"]
 
 
 def test_sqlite_store_load_missing_session_raises_key_error(tmp_path):

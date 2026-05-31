@@ -79,7 +79,6 @@ class TurnService:
         session_id = str(uuid4())
         active_ref = self.scheduler.first_ref(theme=theme)
         state = SessionState(session_id=session_id, student_id=student_id, theme=theme, active_ref=active_ref)
-        self.store.sessions[session_id] = state
         public = self.problem_bank.public_problem(active_ref)
         state.contexts_seen.add(_context_key(public))
         llm, llm_guardrail_fires = self._generate_llm(
@@ -104,6 +103,7 @@ class TurnService:
             )
         )
         _persist_teacher_check_if_accepted(state, llm.teacher_check, guarded.guardrail_fires)
+        self.store.create(state)
         return TurnResponse(
             session_id=session_id,
             public_problem=public,
@@ -116,7 +116,7 @@ class TurnService:
         )
 
     def submit_turn(self, session_id: str, *, idempotency_key: str, answer: str) -> TurnResponse:
-        state = self.store.sessions[session_id]
+        state = self.store.load(session_id)
         if idempotency_key in state.idempotency:
             return state.idempotency[idempotency_key]
 
@@ -181,10 +181,11 @@ class TurnService:
             guardrail_fires=(*llm_guardrail_fires, *guarded.guardrail_fires),
         )
         state.idempotency[idempotency_key] = response
+        self.store.save(state)
         return response
 
     def skip_problem(self, session_id: str, *, reason: str) -> TurnResponse:
-        state = self.store.sessions[session_id]
+        state = self.store.load(session_id)
         skipped_ref = state.active_ref
         state.abandoned_refs.append(skipped_ref)
         state.skip_events.append({"ref": skipped_ref, "reason": reason})
@@ -213,6 +214,7 @@ class TurnService:
             )
         )
         _persist_teacher_check_if_accepted(state, llm.teacher_check, guarded.guardrail_fires)
+        self.store.save(state)
         return TurnResponse(
             session_id=session_id,
             public_problem=public,
@@ -225,19 +227,21 @@ class TurnService:
         )
 
     def record_transfer(self, session_id: str, *, skill_id: str, context_key: str) -> SkillState:
-        state = self.store.sessions[session_id]
+        state = self.store.load(session_id)
         state.contexts_seen.add(context_key)
         state.transfer_passed_by_skill.add(skill_id)
+        self.store.save(state)
         return self.skill_state(session_id, skill_id=skill_id)
 
     def record_retention(self, session_id: str, *, skill_id: str, context_key: str) -> SkillState:
-        state = self.store.sessions[session_id]
+        state = self.store.load(session_id)
         state.contexts_seen.add(context_key)
         state.retention_passed_by_skill.add(skill_id)
+        self.store.save(state)
         return self.skill_state(session_id, skill_id=skill_id)
 
     def skill_state(self, session_id: str, *, skill_id: str) -> SkillState:
-        state = self.store.sessions[session_id]
+        state = self.store.load(session_id)
         attempts = [attempt for attempt in state.attempts if attempt.skill_id == skill_id]
         return SkillState(
             skill_id=skill_id,

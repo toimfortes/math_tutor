@@ -49,6 +49,18 @@ Anthropic API mode:
 LLM_PROVIDER=anthropic ANTHROPIC_API_KEY=... python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
 ```
 
+## Session Persistence
+
+By default sessions live in memory and are lost on restart. Set `SESSION_DB_PATH`
+to a file to persist them to SQLite (stdlib `sqlite3`, no migrations needed —
+the table is created on startup). Each session is stored as one JSON aggregate
+row with a `version` column for optimistic locking.
+
+```bash
+SESSION_DB_PATH=./sessions.db LLM_PROVIDER=mock \
+  python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
+```
+
 ## Verification
 
 Backend:

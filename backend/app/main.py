@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from backend.app.config import Settings
 from backend.app.content.seed_loader import load_gold_problem_bank
+from backend.app.services.session_store import SqliteSessionStore
 from backend.app.llm.anthropic_client import AnthropicLLMClient
 from backend.app.llm.gemini_client import GeminiLLMClient
 from backend.app.llm.mock_client import MockLLMClient
@@ -37,10 +38,16 @@ class AssessmentRequest(BaseModel):
 def create_app(settings: Settings | None = None) -> FastAPI:
     active_settings = settings or Settings.from_env()
     app = FastAPI(title=active_settings.app_name)
+    problem_bank = load_gold_problem_bank()
+    store = (
+        SqliteSessionStore(active_settings.session_db_path, problem_bank.public_problem)
+        if active_settings.session_db_path
+        else InMemoryTurnStore()
+    )
     turn_service = TurnService(
-        problem_bank=load_gold_problem_bank(),
+        problem_bank=problem_bank,
         llm_client=_build_llm_client(active_settings),
-        store=InMemoryTurnStore(),
+        store=store,
     )
     app.state.turn_service = turn_service
 

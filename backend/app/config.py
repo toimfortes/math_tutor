@@ -9,6 +9,7 @@ from typing import Mapping
 class Settings:
     app_name: str = "Math Tutor"
     database_url: str = "sqlite+pysqlite:///:memory:"
+    session_db_path: str | None = None
     llm_provider: str = "mock"
     anthropic_api_key: str | None = None
     anthropic_api_url: str = "https://api.anthropic.com/v1/messages"
@@ -33,6 +34,7 @@ class Settings:
         return cls(
             app_name=source.get("APP_NAME", cls.app_name),
             database_url=source.get("DATABASE_URL", cls.database_url),
+            session_db_path=source.get("SESSION_DB_PATH"),
             llm_provider=source.get("LLM_PROVIDER", cls.llm_provider).lower(),
             anthropic_api_key=source.get("ANTHROPIC_API_KEY"),
             anthropic_api_url=source.get("ANTHROPIC_API_URL", cls.anthropic_api_url),
