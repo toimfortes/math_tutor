@@ -46,10 +46,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if active_settings.session_db_path
         else InMemoryTurnStore()
     )
+    llm_budget = (
+        FixedWindowRateLimiter(limit=active_settings.daily_llm_budget, window_seconds=86_400.0)
+        if active_settings.daily_llm_budget is not None
+        else None
+    )
     turn_service = TurnService(
         problem_bank=problem_bank,
         llm_client=_build_llm_client(active_settings),
         store=store,
+        llm_budget=llm_budget,
     )
     app.state.turn_service = turn_service
     limiter = (

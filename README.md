@@ -68,6 +68,13 @@ and `/turn` (per session); exceeding it returns HTTP 429. Unset disables it.
 The limiter is per-process and in-memory — a shared backend would be needed for
 a multi-instance deploy.
 
+## LLM Spend Cap
+
+Set `DAILY_LLM_BUDGET` to cap LLM calls per student over a rolling 24h window.
+When the budget is exhausted, turns degrade to deterministic fallback narration
+instead of calling the provider — code-owned grading and scheduling keep working,
+so the tutoring loop never breaks. Unset disables the cap.
+
 ## Verification
 
 Backend:

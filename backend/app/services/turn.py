@@ -72,10 +72,11 @@ class TurnResponse:
 
 
 class TurnService:
-    def __init__(self, *, problem_bank: ProblemBank, llm_client: LLMClient, store: InMemoryTurnStore):
+    def __init__(self, *, problem_bank: ProblemBank, llm_client: LLMClient, store: InMemoryTurnStore, llm_budget=None):
         self.problem_bank = problem_bank
         self.llm_client = llm_client
         self.store = store
+        self.llm_budget = llm_budget
         self.scheduler = RoundRobinScheduler(problem_bank)
 
     def start_session(self, *, student_id: str, theme: str) -> TurnResponse:
@@ -91,6 +92,7 @@ class TurnService:
             allowed_help_level=0,
             tier="routine",
             context=_llm_context(public_problem=public, check_result=None, allowed_help_level=0),
+            budget_key=student_id,
         )
         private = self.problem_bank.private_problem(active_ref)
         guarded = apply_guardrails(
@@ -169,6 +171,7 @@ class TurnService:
                 allowed_help_level=allowed_help,
                 diagnostic=diagnostic,
             ),
+            budget_key=state.student_id,
         )
         guarded = apply_guardrails(
             GuardrailInput(
@@ -225,6 +228,7 @@ class TurnService:
             allowed_help_level=0,
             tier="routine",
             context=_llm_context(public_problem=public, check_result=None, allowed_help_level=0),
+            budget_key=state.student_id,
         )
         private = self.problem_bank.private_problem(state.active_ref)
         guarded = apply_guardrails(
@@ -286,7 +290,20 @@ class TurnService:
         allowed_help_level: int,
         tier: str,
         context: dict[str, object],
+        budget_key: str | None = None,
     ) -> tuple[LLMResponse, tuple[str, ...]]:
+        if self.llm_budget is not None and budget_key is not None and not self.llm_budget.allow(budget_key):
+            # Daily spend cap reached: skip the provider and degrade to the
+            # deterministic fallback narration. Code-owned grading and
+            # scheduling are unaffected.
+            return (
+                _fallback_llm_response(
+                    check_result=check_result,
+                    presenting_next=presenting_next,
+                    allowed_help_level=allowed_help_level,
+                ),
+                ("llm_budget_exhausted",),
+            )
         try:
             return (
                 self.llm_client.generate(
