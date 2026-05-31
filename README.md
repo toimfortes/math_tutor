@@ -84,9 +84,15 @@ schema and used to type the API client's response parsing, catching contract
 drift at compile time. Regenerate after changing response models:
 
 ```bash
-python -c "import json; from backend.app.main import create_app; \
-  open('frontend/openapi.json','w').write(json.dumps(create_app().openapi()))"
-cd frontend && npx openapi-typescript openapi.json -o src/generated/apiSchema.ts
+cd frontend
+npm run generate:api
+```
+
+Check the committed generated schema before pushing:
+
+```bash
+cd frontend
+npm run check:api
 ```
 
 ## Verification

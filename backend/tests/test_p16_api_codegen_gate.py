@@ -15,6 +15,14 @@ def test_frontend_package_has_reproducible_api_codegen_scripts():
     assert package["devDependencies"]["openapi-typescript"] == "7.13.0"
 
 
+def test_readme_documents_checked_api_codegen_path():
+    readme = (ROOT / "README.md").read_text()
+
+    assert "npm run generate:api" in readme
+    assert "npm run check:api" in readme
+    assert "python -c" not in readme
+
+
 def test_ci_checks_generated_api_schema_drift():
     workflow = (ROOT / ".github/workflows/ci.yml").read_text()
 
