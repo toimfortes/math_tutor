@@ -23,6 +23,17 @@ def test_ci_checks_generated_api_schema_drift():
     assert "name: Install backend dependencies for OpenAPI export" in workflow
 
 
+def test_ci_uses_node24_action_versions():
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text()
+
+    assert "actions/checkout@v6" in workflow
+    assert "actions/setup-node@v6" in workflow
+    assert "actions/setup-python@v6" in workflow
+    assert "actions/checkout@v4" not in workflow
+    assert "actions/setup-node@v4" not in workflow
+    assert "actions/setup-python@v5" not in workflow
+
+
 def test_openapi_export_script_is_tracked():
     script = ROOT / "scripts/export_openapi.py"
 
