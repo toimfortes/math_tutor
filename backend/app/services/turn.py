@@ -18,6 +18,10 @@ from backend.app.llm.types import LLMClient, LLMResponse
 logger = logging.getLogger("math_tutor.turn")
 
 
+class SessionNotFoundError(KeyError):
+    """Raised when a turn operation references an unknown session."""
+
+
 @dataclass
 class SessionState:
     session_id: str
@@ -88,6 +92,12 @@ class TurnService:
         self.attempt_log = attempt_log
         self.scheduler = RoundRobinScheduler(problem_bank)
 
+    def _load(self, session_id: str) -> SessionState:
+        try:
+            return self.store.load(session_id)
+        except KeyError as exc:
+            raise SessionNotFoundError(session_id) from exc
+
     def start_session(self, *, student_id: str, theme: str) -> TurnResponse:
         session_id = str(uuid4())
         active_ref = self.scheduler.first_ref(theme=theme)
@@ -141,7 +151,7 @@ class TurnService:
         )
 
     def submit_turn(self, session_id: str, *, idempotency_key: str, answer: str) -> TurnResponse:
-        state = self.store.load(session_id)
+        state = self._load(session_id)
         if idempotency_key in state.idempotency:
             return state.idempotency[idempotency_key]
 
@@ -232,7 +242,7 @@ class TurnService:
         return response
 
     def skip_problem(self, session_id: str, *, reason: str) -> TurnResponse:
-        state = self.store.load(session_id)
+        state = self._load(session_id)
         skipped_ref = state.active_ref
         state.abandoned_refs.append(skipped_ref)
         state.skip_events.append({"ref": skipped_ref, "reason": reason})
@@ -275,21 +285,21 @@ class TurnService:
         )
 
     def record_transfer(self, session_id: str, *, skill_id: str, context_key: str) -> SkillState:
-        state = self.store.load(session_id)
+        state = self._load(session_id)
         state.contexts_seen.add(context_key)
         state.transfer_passed_by_skill.add(skill_id)
         self.store.save(state)
         return self.skill_state(session_id, skill_id=skill_id)
 
     def record_retention(self, session_id: str, *, skill_id: str, context_key: str) -> SkillState:
-        state = self.store.load(session_id)
+        state = self._load(session_id)
         state.contexts_seen.add(context_key)
         state.retention_passed_by_skill.add(skill_id)
         self.store.save(state)
         return self.skill_state(session_id, skill_id=skill_id)
 
     def skill_state(self, session_id: str, *, skill_id: str) -> SkillState:
-        state = self.store.load(session_id)
+        state = self._load(session_id)
         attempts = [attempt for attempt in state.attempts if attempt.skill_id == skill_id]
         return SkillState(
             skill_id=skill_id,

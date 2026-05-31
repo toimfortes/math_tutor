@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from backend.app.api_models import SkillStateModel, TurnResponseModel
@@ -8,12 +9,12 @@ from backend.app.config import Settings
 from backend.app.content.seed_loader import load_gold_problem_bank
 from backend.app.services.attempt_log import SqliteAttemptLog
 from backend.app.services.rate_limiter import FixedWindowRateLimiter
-from backend.app.services.session_store import SqliteSessionStore
+from backend.app.services.session_store import SqliteSessionStore, StaleSessionError
 from backend.app.llm.anthropic_client import AnthropicLLMClient
 from backend.app.llm.gemini_client import GeminiLLMClient
 from backend.app.llm.mock_client import MockLLMClient
 from backend.app.llm.types import LLMClient
-from backend.app.services.turn import InMemoryTurnStore, TurnResponse, TurnService
+from backend.app.services.turn import InMemoryTurnStore, SessionNotFoundError, TurnResponse, TurnService
 
 
 class StartSessionRequest(BaseModel):
@@ -41,6 +42,15 @@ class AssessmentRequest(BaseModel):
 def create_app(settings: Settings | None = None) -> FastAPI:
     active_settings = settings or Settings.from_env()
     app = FastAPI(title=active_settings.app_name)
+
+    @app.exception_handler(SessionNotFoundError)
+    async def _session_not_found(request: Request, exc: SessionNotFoundError) -> JSONResponse:
+        return JSONResponse(status_code=404, content={"detail": "session not found"})
+
+    @app.exception_handler(StaleSessionError)
+    async def _stale_session(request: Request, exc: StaleSessionError) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": "session was modified concurrently"})
+
     problem_bank = load_gold_problem_bank()
     store = (
         SqliteSessionStore(active_settings.session_db_path, problem_bank.public_problem)
