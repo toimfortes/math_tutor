@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 
 
 @dataclass(frozen=True)
@@ -58,3 +59,7 @@ def is_mastered(state: SkillState) -> bool:
         and state.transfer_passed
         and state.retention_passed
     )
+
+
+def retention_is_due(*, last_correct_at: datetime, now: datetime) -> bool:
+    return now - last_correct_at >= timedelta(days=2)

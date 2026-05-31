@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { startSession, submitTurn } from "./api";
+import { getStudentState, recordRetention, recordTransfer, skipProblem, startSession, submitTurn } from "./api";
 
 function problem(prompt: string, problemId: string) {
   return {
@@ -69,6 +69,68 @@ describe("tutor API client", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/session/start",
       expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("skips a problem and records transfer and retention state", async () => {
+    const skillState = {
+      skill_id: "lin_plot_point",
+      attempt_count: 0,
+      contexts_seen: ["space_logistics:grid"],
+      transfer_passed: true,
+      retention_passed: true,
+      concept_mastered: false,
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            session_id: "s1",
+            public_problem: problem("Next", "lf_p02"),
+            dialogue: "Here is the next problem.",
+            pedagogical_move: "present_next_problem",
+            check_result: null,
+            xp_awarded: 0,
+            proposed_hint_level: 0,
+            guardrail_fires: [],
+            diagnostic: null,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify(skillState), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(skillState), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(skillState), { status: 200 }));
+
+    const skipped = await skipProblem(fetchMock, { sessionId: "s1", reason: "stuck" });
+    const transfer = await recordTransfer(fetchMock, {
+      sessionId: "s1",
+      skillId: "lin_plot_point",
+      contextKey: "drone_physics:word",
+    });
+    const retention = await recordRetention(fetchMock, {
+      sessionId: "s1",
+      skillId: "lin_plot_point",
+      contextKey: "space_logistics:delayed",
+    });
+    const state = await getStudentState(fetchMock, {
+      studentId: "student-1",
+      sessionId: "s1",
+      skillId: "lin_plot_point",
+    });
+
+    expect(skipped.publicProblem.ref.problemId).toBe("lf_p02");
+    expect(transfer.transferPassed).toBe(true);
+    expect(retention.retentionPassed).toBe(true);
+    expect(state.contextsSeen).toContain("space_logistics:grid");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/session/skip",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/student/student-1/state?session_id=s1&skill_id=lin_plot_point",
+      expect.objectContaining({ method: "GET" }),
     );
   });
 });

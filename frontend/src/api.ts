@@ -40,6 +40,15 @@ export type TurnResponse = {
   diagnostic: Diagnostic | null;
 };
 
+export type SkillState = {
+  skillId: string;
+  attemptCount: number;
+  contextsSeen: string[];
+  transferPassed: boolean;
+  retentionPassed: boolean;
+  conceptMastered: boolean;
+};
+
 type FetchLike = typeof fetch;
 
 export async function startSession(
@@ -63,7 +72,60 @@ export async function submitTurn(
   });
 }
 
+export async function skipProblem(
+  fetcher: FetchLike,
+  params: { sessionId: string; reason: string },
+): Promise<TurnResponse> {
+  return postTurnJson(fetcher, "/api/session/skip", {
+    session_id: params.sessionId,
+    reason: params.reason,
+  });
+}
+
+export async function recordTransfer(
+  fetcher: FetchLike,
+  params: { sessionId: string; skillId: string; contextKey: string },
+): Promise<SkillState> {
+  return postSkillStateJson(fetcher, "/api/assessment/transfer", {
+    session_id: params.sessionId,
+    skill_id: params.skillId,
+    context_key: params.contextKey,
+  });
+}
+
+export async function recordRetention(
+  fetcher: FetchLike,
+  params: { sessionId: string; skillId: string; contextKey: string },
+): Promise<SkillState> {
+  return postSkillStateJson(fetcher, "/api/assessment/retention", {
+    session_id: params.sessionId,
+    skill_id: params.skillId,
+    context_key: params.contextKey,
+  });
+}
+
+export async function getStudentState(
+  fetcher: FetchLike,
+  params: { studentId: string; sessionId: string; skillId: string },
+): Promise<SkillState> {
+  const query = new URLSearchParams({
+    session_id: params.sessionId,
+    skill_id: params.skillId,
+  });
+  const response = await fetcher(`/api/student/${params.studentId}/state?${query.toString()}`, {
+    method: "GET",
+  });
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+  return toSkillState(await response.json());
+}
+
 async function postJson(fetcher: FetchLike, url: string, body: unknown): Promise<TurnResponse> {
+  return postTurnJson(fetcher, url, body);
+}
+
+async function postTurnJson(fetcher: FetchLike, url: string, body: unknown): Promise<TurnResponse> {
   const response = await fetcher(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -73,6 +135,18 @@ async function postJson(fetcher: FetchLike, url: string, body: unknown): Promise
     throw new Error(`Request failed: ${response.status}`);
   }
   return toTurnResponse(await response.json());
+}
+
+async function postSkillStateJson(fetcher: FetchLike, url: string, body: unknown): Promise<SkillState> {
+  const response = await fetcher(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+  return toSkillState(await response.json());
 }
 
 function toTurnResponse(raw: any): TurnResponse {
@@ -110,5 +184,16 @@ function toTurnResponse(raw: any): TurnResponse {
           safeHintLevelCap: raw.diagnostic.safe_hint_level_cap,
         }
       : null,
+  };
+}
+
+function toSkillState(raw: any): SkillState {
+  return {
+    skillId: raw.skill_id,
+    attemptCount: raw.attempt_count,
+    contextsSeen: raw.contexts_seen,
+    transferPassed: raw.transfer_passed,
+    retentionPassed: raw.retention_passed,
+    conceptMastered: raw.concept_mastered,
   };
 }

@@ -23,6 +23,17 @@ class TurnRequest(BaseModel):
     answer: str
 
 
+class SkipRequest(BaseModel):
+    session_id: str
+    reason: str = "stuck"
+
+
+class AssessmentRequest(BaseModel):
+    session_id: str
+    skill_id: str
+    context_key: str
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     active_settings = settings or Settings.from_env()
     app = FastAPI(title=active_settings.app_name)
@@ -52,6 +63,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 answer=request.answer,
             )
         )
+
+    @app.post("/session/skip")
+    def skip_session_problem(request: SkipRequest) -> dict:
+        return _turn_response_to_dict(turn_service.skip_problem(request.session_id, reason=request.reason))
+
+    @app.post("/assessment/transfer")
+    def record_transfer(request: AssessmentRequest) -> dict:
+        return _skill_state_to_dict(
+            turn_service.record_transfer(
+                request.session_id,
+                skill_id=request.skill_id,
+                context_key=request.context_key,
+            )
+        )
+
+    @app.post("/assessment/retention")
+    def record_retention(request: AssessmentRequest) -> dict:
+        return _skill_state_to_dict(
+            turn_service.record_retention(
+                request.session_id,
+                skill_id=request.skill_id,
+                context_key=request.context_key,
+            )
+        )
+
+    @app.get("/student/{student_id}/state")
+    def get_student_state(student_id: str, session_id: str, skill_id: str) -> dict:
+        return _skill_state_to_dict(turn_service.skill_state(session_id, skill_id=skill_id))
 
     return app
 
@@ -131,4 +170,17 @@ def _turn_response_to_dict(response: TurnResponse) -> dict:
             "matched_pattern": diagnostic.matched_pattern,
             "safe_hint_level_cap": diagnostic.safe_hint_level_cap,
         },
+    }
+
+
+def _skill_state_to_dict(state) -> dict:
+    from backend.app.domain.mastery import is_mastered
+
+    return {
+        "skill_id": state.skill_id,
+        "attempt_count": len(state.attempts),
+        "contexts_seen": sorted(state.contexts_seen),
+        "transfer_passed": state.transfer_passed,
+        "retention_passed": state.retention_passed,
+        "concept_mastered": is_mastered(state),
     }

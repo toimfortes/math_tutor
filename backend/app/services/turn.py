@@ -8,6 +8,7 @@ from backend.app.domain.checker import check_answer
 from backend.app.domain.diagnostic_checker import DiagnosticResult, diagnose_answer
 from backend.app.domain.help_ceiling import compute_allowed_help_level
 from backend.app.domain.mastery import ProblemAttempt, SubmissionEvent
+from backend.app.domain.mastery import SkillState
 from backend.app.domain.scheduler import RoundRobinScheduler
 from backend.app.domain.xp import compute_xp_award
 from backend.app.llm.guardrails import GuardrailInput, apply_guardrails
@@ -23,6 +24,11 @@ class SessionState:
     attempts: list[ProblemAttempt] = field(default_factory=list)
     idempotency: dict[str, "TurnResponse"] = field(default_factory=dict)
     hidden_teacher_checks: list[dict[str, object]] = field(default_factory=list)
+    abandoned_refs: list[RealizedProblemRef] = field(default_factory=list)
+    skip_events: list[dict[str, object]] = field(default_factory=list)
+    contexts_seen: set[str] = field(default_factory=set)
+    transfer_passed_by_skill: set[str] = field(default_factory=set)
+    retention_passed_by_skill: set[str] = field(default_factory=set)
 
 
 @dataclass
@@ -56,6 +62,7 @@ class TurnService:
         state = SessionState(session_id=session_id, student_id=student_id, theme=theme, active_ref=active_ref)
         self.store.sessions[session_id] = state
         public = self.problem_bank.public_problem(active_ref)
+        state.contexts_seen.add(_context_key(public))
         llm = self.llm_client.generate(
             check_result=None,
             diagnostic=None,
@@ -96,6 +103,7 @@ class TurnService:
 
         current_ref = state.active_ref
         public = self.problem_bank.public_problem(current_ref)
+        state.contexts_seen.add(_context_key(public))
         private = self.problem_bank.private_problem(current_ref)
         check = check_answer(answer, private.canonical_answer, answer_type=public.answer_type, variable=_variable_from_answer(private.canonical_answer))
         diagnostic = diagnose_answer(
@@ -155,6 +163,70 @@ class TurnService:
         )
         state.idempotency[idempotency_key] = response
         return response
+
+    def skip_problem(self, session_id: str, *, reason: str) -> TurnResponse:
+        state = self.store.sessions[session_id]
+        skipped_ref = state.active_ref
+        state.abandoned_refs.append(skipped_ref)
+        state.skip_events.append({"ref": skipped_ref, "reason": reason})
+        state.active_ref = self.scheduler.next_ref(skipped_ref, theme=state.theme)
+        public = self.problem_bank.public_problem(state.active_ref)
+        state.contexts_seen.add(_context_key(public))
+        llm = self.llm_client.generate(
+            check_result=None,
+            diagnostic=None,
+            presenting_next=True,
+            allowed_help_level=0,
+            tier="routine",
+            context=_llm_context(public_problem=public, check_result=None, allowed_help_level=0),
+        )
+        private = self.problem_bank.private_problem(state.active_ref)
+        guarded = apply_guardrails(
+            GuardrailInput(
+                dialogue=llm.dialogue,
+                pedagogical_move=llm.pedagogical_move,
+                proposed_hint_level=llm.proposed_hint_level,
+                allowed_help_level=0,
+                canonical_answer=private.canonical_answer,
+                banned_strings=[private.canonical_answer],
+                concept_mastered=False,
+                teacher_check=llm.teacher_check,
+            )
+        )
+        _persist_teacher_check_if_accepted(state, llm.teacher_check, guarded.guardrail_fires)
+        return TurnResponse(
+            session_id=session_id,
+            public_problem=public,
+            dialogue=guarded.dialogue,
+            pedagogical_move=guarded.pedagogical_move,
+            check_result=None,
+            xp_awarded=0,
+            proposed_hint_level=guarded.proposed_hint_level,
+            guardrail_fires=guarded.guardrail_fires,
+        )
+
+    def record_transfer(self, session_id: str, *, skill_id: str, context_key: str) -> SkillState:
+        state = self.store.sessions[session_id]
+        state.contexts_seen.add(context_key)
+        state.transfer_passed_by_skill.add(skill_id)
+        return self.skill_state(session_id, skill_id=skill_id)
+
+    def record_retention(self, session_id: str, *, skill_id: str, context_key: str) -> SkillState:
+        state = self.store.sessions[session_id]
+        state.contexts_seen.add(context_key)
+        state.retention_passed_by_skill.add(skill_id)
+        return self.skill_state(session_id, skill_id=skill_id)
+
+    def skill_state(self, session_id: str, *, skill_id: str) -> SkillState:
+        state = self.store.sessions[session_id]
+        attempts = [attempt for attempt in state.attempts if attempt.skill_id == skill_id]
+        return SkillState(
+            skill_id=skill_id,
+            attempts=attempts,
+            contexts_seen=set(state.contexts_seen),
+            transfer_passed=skill_id in state.transfer_passed_by_skill,
+            retention_passed=skill_id in state.retention_passed_by_skill,
+        )
 
 
 def _known_wrong_answers(ref: RealizedProblemRef) -> dict[str, str]:
@@ -225,3 +297,8 @@ def _llm_context(
             "safe_hint_level_cap": diagnostic.safe_hint_level_cap,
         }
     return context
+
+
+def _context_key(public_problem: PublicProblem) -> str:
+    representation = public_problem.representations[0] if public_problem.representations else "unknown"
+    return f"{public_problem.ref.realization_key}:{representation}"
