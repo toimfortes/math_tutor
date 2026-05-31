@@ -236,6 +236,31 @@ describe("App", () => {
     expect(host.querySelector("svg.graph-view")).not.toBeNull();
   });
 
+  it("surfaces the hint at the backend-proposed level", async () => {
+    const turn = turnResponse("Find the slope of this route.", "lf_p02");
+    turn.proposed_hint_level = 2;
+    const fetchMock = vi
+      .fn()
+      .mockReturnValueOnce(jsonResponse(turn))
+      .mockReturnValueOnce(jsonResponse(skillState()));
+    vi.stubGlobal("fetch", fetchMock);
+
+    host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+
+    await act(async () => {
+      root?.render(<App />);
+    });
+    await act(async () => {
+      button(host!, "Start").click();
+    });
+
+    // publicProblem() authors level_2 = "Name the operation." and level_0 differently.
+    expect(host.textContent).toContain("Name the operation.");
+    expect(host.textContent).not.toContain("Think about the relationship.");
+  });
+
   it("renders an empty grid for plot-a-point problems", async () => {
     const gridProblem = {
       prompt: "Plot the point that is 4 right and 3 up.",

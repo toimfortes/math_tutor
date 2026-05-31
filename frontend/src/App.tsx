@@ -1,6 +1,7 @@
 import { ArrowRight, BadgeCheck, CalendarCheck2, CheckCircle2, CircleAlert, FastForward, RotateCcw, Send } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
 import { getStudentState, recordRetention, recordTransfer, SkillState, skipProblem, startSession, submitTurn, TurnResponse } from "./api";
+import { hintForLevel } from "./hints";
 import { ChatPanel } from "./components/ChatPanel";
 import { GraphView } from "./components/GraphView";
 import { GridView } from "./components/GridView";
@@ -208,7 +209,7 @@ export function App() {
 
             <div className="hint-band">
               <ArrowRight size={16} />
-              <span>{turn.publicProblem.hintScaffold.level0}</span>
+              <span>{hintForLevel(turn.publicProblem.hintScaffold, turn.proposedHintLevel)}</span>
             </div>
           </>
         ) : (
