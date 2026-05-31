@@ -29,11 +29,30 @@ class SessionState:
     contexts_seen: set[str] = field(default_factory=set)
     transfer_passed_by_skill: set[str] = field(default_factory=set)
     retention_passed_by_skill: set[str] = field(default_factory=set)
+    version: int = 0
 
 
 @dataclass
 class InMemoryTurnStore:
+    """Non-durable session store. Holds live SessionState objects in a dict.
+
+    Exposes the same create/load/save interface as the durable SQLite store so
+    TurnService can be wired to either. `load` returns the live object, so
+    in-place mutation is visible without an explicit save; `save` still bumps
+    the version to keep behaviour consistent with the durable store.
+    """
+
     sessions: dict[str, SessionState] = field(default_factory=dict)
+
+    def create(self, state: SessionState) -> None:
+        self.sessions[state.session_id] = state
+
+    def load(self, session_id: str) -> SessionState:
+        return self.sessions[session_id]
+
+    def save(self, state: SessionState) -> None:
+        state.version += 1
+        self.sessions[state.session_id] = state
 
 
 @dataclass(frozen=True)
