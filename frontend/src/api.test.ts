@@ -19,7 +19,80 @@ function problem(prompt: string, problemId: string) {
   };
 }
 
+function graphProblem() {
+  return {
+    prompt: "Read the slope from the graph.",
+    ref: { problem_id: "lf_p07", realization_key: "neutral" },
+    skill_id: "lin_slope_from_graph",
+    answer_type: "numeric",
+    checker: "numeric",
+    representations: ["graph"],
+    graph: {
+      kind: "line",
+      x_min: -1,
+      x_max: 5,
+      y_min: -1,
+      y_max: 6,
+      points: [
+        [0, 0],
+        [1, 2],
+      ],
+      show_grid: true,
+    },
+    hint_scaffold: {
+      max_safe_hint_level: 2,
+      level_0: "Find the rise and the run.",
+      level_1: "Slope is rise divided by run.",
+      level_2: "Write vertical change over horizontal change.",
+      level_3: null,
+    },
+  };
+}
+
+function turnPayload(publicProblem: unknown) {
+  return {
+    session_id: "s1",
+    public_problem: publicProblem,
+    dialogue: "Here is the next problem.",
+    pedagogical_move: "present_next_problem",
+    check_result: null,
+    xp_awarded: 0,
+    proposed_hint_level: 0,
+    guardrail_fires: [],
+    diagnostic: null,
+  };
+}
+
 describe("tutor API client", () => {
+  it("parses the public-safe graph payload into camelCase", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(turnPayload(graphProblem())), { status: 200 }));
+
+    const started = await startSession(fetchMock, { studentId: "student-1", theme: "neutral" });
+
+    const graph = started.publicProblem.graph;
+    expect(graph).not.toBeNull();
+    expect(graph?.kind).toBe("line");
+    expect(graph?.xMin).toBe(-1);
+    expect(graph?.yMax).toBe(6);
+    expect(graph?.points).toEqual([
+      [0, 0],
+      [1, 2],
+    ]);
+    expect(graph?.showGrid).toBe(true);
+  });
+
+  it("leaves graph null for text-only problems", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(turnPayload(problem("Prompt", "lf_p09"))), { status: 200 }));
+
+    const started = await startSession(fetchMock, { studentId: "student-1", theme: "neutral" });
+
+    expect(started.publicProblem.graph).toBeNull();
+  });
+
   it("starts a session and submits a turn", async () => {
     const fetchMock = vi
       .fn()

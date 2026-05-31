@@ -2,6 +2,7 @@ import { ArrowRight, BadgeCheck, CalendarCheck2, CheckCircle2, CircleAlert, Fast
 import { FormEvent, useMemo, useState } from "react";
 import { getStudentState, recordRetention, recordTransfer, SkillState, skipProblem, startSession, submitTurn, TurnResponse } from "./api";
 import { ChatPanel } from "./components/ChatPanel";
+import { GraphView } from "./components/GraphView";
 
 const THEMES = [
   { value: "space_logistics", label: "Space Logistics" },
@@ -155,6 +156,12 @@ export function App() {
               </div>
               <Status result={turn.checkResult} />
             </header>
+
+            {turn.publicProblem.representations.includes("graph") && turn.publicProblem.graph ? (
+              <div className="graph-panel">
+                <GraphView graph={turn.publicProblem.graph} />
+              </div>
+            ) : null}
 
             <div className="problem-actions">
               <button className="secondary" type="button" onClick={() => void skipCurrentProblem()} disabled={busy}>

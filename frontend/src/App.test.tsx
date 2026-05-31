@@ -116,4 +116,63 @@ describe("App", () => {
     expect(host.textContent).toContain("Mastered");
     expect(fetchMock).toHaveBeenCalledWith("/api/session/skip", expect.objectContaining({ method: "POST" }));
   });
+
+  it("renders a local graph when the problem uses a graph representation", async () => {
+    const graphProblem = {
+      prompt: "Read the slope from the graph.",
+      ref: { problem_id: "lf_p07", realization_key: "space_logistics" },
+      skill_id: "lin_slope_from_graph",
+      answer_type: "numeric",
+      checker: "numeric",
+      representations: ["graph"],
+      graph: {
+        kind: "line",
+        x_min: -1,
+        x_max: 5,
+        y_min: -1,
+        y_max: 6,
+        points: [
+          [0, 0],
+          [1, 2],
+        ],
+        show_grid: true,
+      },
+      hint_scaffold: {
+        max_safe_hint_level: 2,
+        level_0: "Find the rise and the run.",
+        level_1: "Slope is rise divided by run.",
+        level_2: "Write vertical change over horizontal change.",
+        level_3: null,
+      },
+    };
+    const graphTurn = {
+      session_id: "s1",
+      public_problem: graphProblem,
+      dialogue: "Here is the next problem.",
+      pedagogical_move: "present_next_problem",
+      check_result: null,
+      xp_awarded: 0,
+      proposed_hint_level: 0,
+      guardrail_fires: [],
+      diagnostic: null,
+    };
+    const fetchMock = vi
+      .fn()
+      .mockReturnValueOnce(jsonResponse(graphTurn))
+      .mockReturnValueOnce(jsonResponse(skillState({ skill_id: "lin_slope_from_graph" })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+
+    await act(async () => {
+      root?.render(<App />);
+    });
+    await act(async () => {
+      button(host!, "Start").click();
+    });
+
+    expect(host.querySelector("svg.graph-view")).not.toBeNull();
+  });
 });

@@ -42,3 +42,32 @@ The P4 gate is not satisfied unless:
 - Graph problems render through the local fallback with no network.
 - `GraphView` has screenshot or DOM tests for the graph modes in the gold set.
 - Desmos can be absent without breaking the vertical slice.
+
+## Status: satisfied
+
+The graph payload and local fallback are implemented:
+
+- Gold problems `lf_p07`, `lf_p08`, `lf_p10` carry a public-safe `graph`
+  payload (`kind`, bounds, `points`, `show_grid`) with no answer metadata.
+- `backend/app/content/seed_loader.py` exposes it as `PublicProblem.graph`;
+  the turn serializer in `backend/app/main.py` emits it.
+- `backend/content_pipeline/verify.py` ties the `graph` representation to the
+  payload, restricts payload keys, and rejects answer metadata. Covered by
+  `backend/tests/test_p8_content_pipeline.py` and
+  `backend/tests/test_p4_graph_payload.py`.
+- `frontend/src/components/GraphView.tsx` renders axes, optional grid, integer
+  tick labels, and the line as a pure client-side SVG — no Desmos, no network,
+  no third-party embed. The SVG uses a generic aria-label and carries no
+  answer-bearing data attributes.
+- DOM tests: `frontend/src/components/GraphView.test.tsx` (graph modes) and
+  the graph-representation case in `frontend/src/App.test.tsx`.
+
+Verification:
+
+```bash
+pytest -q                                   # 80 passed
+python -m backend.content_pipeline.verify   # 16 problems, 48 realizations, 48 template cases
+python -m backend.content_pipeline.safety   # passed
+cd frontend && npm test -- --run            # 5 files / 14 tests
+npm run build                               # passed
+```
