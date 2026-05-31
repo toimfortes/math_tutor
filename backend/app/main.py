@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+from backend.app.api_models import SkillStateModel, TurnResponseModel
 from backend.app.config import Settings
 from backend.app.content.seed_loader import load_gold_problem_bank
 from backend.app.services.rate_limiter import FixedWindowRateLimiter
@@ -65,14 +66,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def health() -> dict[str, str]:
         return {"status": "ok", "app": active_settings.app_name}
 
-    @app.post("/session/start")
+    @app.post("/session/start", response_model=TurnResponseModel)
     def start_session(request: StartSessionRequest) -> dict:
         _enforce_rate_limit(f"start:{request.student_id}")
         return _turn_response_to_dict(
             turn_service.start_session(student_id=request.student_id, theme=request.theme)
         )
 
-    @app.post("/turn")
+    @app.post("/turn", response_model=TurnResponseModel)
     def submit_turn(request: TurnRequest) -> dict:
         _enforce_rate_limit(f"turn:{request.session_id}")
         return _turn_response_to_dict(
@@ -83,11 +84,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         )
 
-    @app.post("/session/skip")
+    @app.post("/session/skip", response_model=TurnResponseModel)
     def skip_session_problem(request: SkipRequest) -> dict:
         return _turn_response_to_dict(turn_service.skip_problem(request.session_id, reason=request.reason))
 
-    @app.post("/assessment/transfer")
+    @app.post("/assessment/transfer", response_model=SkillStateModel)
     def record_transfer(request: AssessmentRequest) -> dict:
         return _skill_state_to_dict(
             turn_service.record_transfer(
@@ -97,7 +98,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         )
 
-    @app.post("/assessment/retention")
+    @app.post("/assessment/retention", response_model=SkillStateModel)
     def record_retention(request: AssessmentRequest) -> dict:
         return _skill_state_to_dict(
             turn_service.record_retention(
@@ -107,7 +108,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         )
 
-    @app.get("/student/{student_id}/state")
+    @app.get("/student/{student_id}/state", response_model=SkillStateModel)
     def get_student_state(student_id: str, session_id: str, skill_id: str) -> dict:
         return _skill_state_to_dict(turn_service.skill_state(session_id, skill_id=skill_id))
 
