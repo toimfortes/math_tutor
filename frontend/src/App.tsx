@@ -3,6 +3,7 @@ import { FormEvent, useMemo, useState } from "react";
 import { getStudentState, recordRetention, recordTransfer, SkillState, skipProblem, startSession, submitTurn, TurnResponse } from "./api";
 import { ChatPanel } from "./components/ChatPanel";
 import { GraphView } from "./components/GraphView";
+import { GridView } from "./components/GridView";
 import { TableView } from "./components/TableView";
 
 const THEMES = [
@@ -161,6 +162,12 @@ export function App() {
             {turn.publicProblem.graph ? (
               <div className="graph-panel">
                 <GraphView graph={turn.publicProblem.graph} />
+              </div>
+            ) : null}
+
+            {turn.publicProblem.grid ? (
+              <div className="graph-panel">
+                <GridView grid={turn.publicProblem.grid} />
               </div>
             ) : null}
 

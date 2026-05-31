@@ -132,6 +132,35 @@ describe("tutor API client", () => {
     expect(started.publicProblem.table).toBeNull();
   });
 
+  it("parses the grid payload into camelCase", async () => {
+    const gridProblem = {
+      ...problem("Plot the point.", "lf_p01"),
+      representations: ["grid"],
+      grid: { x_min: -1, x_max: 6, y_min: -1, y_max: 6, show_grid: true },
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(turnPayload(gridProblem)), { status: 200 }));
+
+    const started = await startSession(fetchMock, { studentId: "student-1", theme: "neutral" });
+
+    const grid = started.publicProblem.grid;
+    expect(grid).not.toBeNull();
+    expect(grid?.xMin).toBe(-1);
+    expect(grid?.xMax).toBe(6);
+    expect(grid?.showGrid).toBe(true);
+  });
+
+  it("leaves grid null for non-grid problems", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(turnPayload(problem("Prompt", "lf_p09"))), { status: 200 }));
+
+    const started = await startSession(fetchMock, { studentId: "student-1", theme: "neutral" });
+
+    expect(started.publicProblem.grid).toBeNull();
+  });
+
   it("starts a session and submits a turn", async () => {
     const fetchMock = vi
       .fn()

@@ -236,6 +236,57 @@ describe("App", () => {
     expect(host.querySelector("svg.graph-view")).not.toBeNull();
   });
 
+  it("renders an empty grid for plot-a-point problems", async () => {
+    const gridProblem = {
+      prompt: "Plot the point that is 4 right and 3 up.",
+      ref: { problem_id: "lf_p01", realization_key: "space_logistics" },
+      skill_id: "coord_plane_basics",
+      answer_type: "ordered_pair",
+      checker: "ordered_pair",
+      representations: ["grid"],
+      grid: { x_min: -1, x_max: 6, y_min: -1, y_max: 6, show_grid: true },
+      graph: null,
+      table: null,
+      hint_scaffold: {
+        max_safe_hint_level: 2,
+        level_0: "Count along each axis.",
+        level_1: "Right is x, up is y.",
+        level_2: "Write it as (x, y).",
+        level_3: null,
+      },
+    };
+    const gridTurn = {
+      session_id: "s1",
+      public_problem: gridProblem,
+      dialogue: "Here is the next problem.",
+      pedagogical_move: "present_next_problem",
+      check_result: null,
+      xp_awarded: 0,
+      proposed_hint_level: 0,
+      guardrail_fires: [],
+      diagnostic: null,
+    };
+    const fetchMock = vi
+      .fn()
+      .mockReturnValueOnce(jsonResponse(gridTurn))
+      .mockReturnValueOnce(jsonResponse(skillState({ skill_id: "coord_plane_basics" })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+
+    await act(async () => {
+      root?.render(<App />);
+    });
+    await act(async () => {
+      button(host!, "Start").click();
+    });
+
+    expect(host.querySelector("svg.grid-view")).not.toBeNull();
+    expect(host.querySelector("svg.grid-view circle")).toBeNull();
+  });
+
   it("renders a data table when the problem uses a table representation", async () => {
     const tableProblem = {
       prompt: "Find the rate of change from the table.",

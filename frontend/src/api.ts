@@ -27,6 +27,14 @@ export type TableSpec = {
   rows: Array<[number, number]>;
 };
 
+export type GridSpec = {
+  xMin: number;
+  xMax: number;
+  yMin: number;
+  yMax: number;
+  showGrid: boolean;
+};
+
 export type PublicProblem = {
   ref: ProblemRef;
   skillId: string;
@@ -37,6 +45,7 @@ export type PublicProblem = {
   hintScaffold: HintScaffold;
   graph: GraphSpec | null;
   table: TableSpec | null;
+  grid: GridSpec | null;
 };
 
 export type Diagnostic = {
@@ -182,6 +191,7 @@ function toTurnResponse(raw: any): TurnResponse {
       prompt: raw.public_problem.prompt,
       graph: toGraphSpec(raw.public_problem.graph),
       table: toTableSpec(raw.public_problem.table),
+      grid: toGridSpec(raw.public_problem.grid),
       hintScaffold: {
         maxSafeHintLevel: raw.public_problem.hint_scaffold.max_safe_hint_level,
         level0: raw.public_problem.hint_scaffold.level_0,
@@ -218,6 +228,19 @@ function toGraphSpec(raw: any): GraphSpec | null {
     yMin: raw.y_min,
     yMax: raw.y_max,
     points: (raw.points ?? []).map((point: [number, number]) => [point[0], point[1]] as [number, number]),
+    showGrid: raw.show_grid,
+  };
+}
+
+function toGridSpec(raw: any): GridSpec | null {
+  if (!raw) {
+    return null;
+  }
+  return {
+    xMin: raw.x_min,
+    xMax: raw.x_max,
+    yMin: raw.y_min,
+    yMax: raw.y_max,
     showGrid: raw.show_grid,
   };
 }
