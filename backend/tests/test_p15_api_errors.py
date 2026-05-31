@@ -23,6 +23,15 @@ def test_unknown_session_state_returns_404():
     assert response.status_code == 404
 
 
+def test_unknown_theme_returns_400():
+    client = TestClient(create_app(Settings.from_env({})))
+
+    response = client.post("/session/start", json={"student_id": "stu", "theme": "not-a-theme"})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "unknown theme"
+
+
 def test_stale_write_returns_409(monkeypatch):
     app = create_app(Settings.from_env({}))
     client = TestClient(app)

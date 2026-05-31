@@ -23,6 +23,10 @@ class SessionNotFoundError(KeyError):
     """Raised when a turn operation references an unknown session."""
 
 
+class InvalidThemeError(ValueError):
+    """Raised when a requested content theme is not in the loaded bank."""
+
+
 @dataclass
 class SessionState:
     session_id: str
@@ -100,6 +104,8 @@ class TurnService:
             raise SessionNotFoundError(session_id) from exc
 
     def start_session(self, *, student_id: str, theme: str) -> TurnResponse:
+        if theme not in self.problem_bank.realization_keys():
+            raise InvalidThemeError(theme)
         session_id = str(uuid4())
         active_ref = self.scheduler.first_ref(theme=theme)
         state = SessionState(session_id=session_id, student_id=student_id, theme=theme, active_ref=active_ref)

@@ -14,7 +14,13 @@ from backend.app.llm.anthropic_client import AnthropicLLMClient
 from backend.app.llm.gemini_client import GeminiLLMClient
 from backend.app.llm.mock_client import MockLLMClient
 from backend.app.llm.types import LLMClient
-from backend.app.services.turn import InMemoryTurnStore, SessionNotFoundError, TurnResponse, TurnService
+from backend.app.services.turn import (
+    InMemoryTurnStore,
+    InvalidThemeError,
+    SessionNotFoundError,
+    TurnResponse,
+    TurnService,
+)
 
 
 class StartSessionRequest(BaseModel):
@@ -46,6 +52,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.exception_handler(SessionNotFoundError)
     async def _session_not_found(request: Request, exc: SessionNotFoundError) -> JSONResponse:
         return JSONResponse(status_code=404, content={"detail": "session not found"})
+
+    @app.exception_handler(InvalidThemeError)
+    async def _invalid_theme(request: Request, exc: InvalidThemeError) -> JSONResponse:
+        return JSONResponse(status_code=400, content={"detail": "unknown theme"})
 
     @app.exception_handler(StaleSessionError)
     async def _stale_session(request: Request, exc: StaleSessionError) -> JSONResponse:
