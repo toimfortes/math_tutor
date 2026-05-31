@@ -4,24 +4,7 @@
  */
 
 export interface paths {
-    "/health": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Health */
-        get: operations["health_health_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/session/start": {
+    "/assessment/retention": {
         parameters: {
             query?: never;
             header?: never;
@@ -30,42 +13,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Start Session */
-        post: operations["start_session_session_start_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/turn": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Submit Turn */
-        post: operations["submit_turn_turn_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/session/skip": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Skip Session Problem */
-        post: operations["skip_session_problem_session_skip_post"];
+        /** Record Retention */
+        post: operations["record_retention_assessment_retention_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -89,7 +38,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/assessment/retention": {
+    "/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Health */
+        get: operations["health_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/session/skip": {
         parameters: {
             query?: never;
             header?: never;
@@ -98,8 +64,25 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record Retention */
-        post: operations["record_retention_assessment_retention_post"];
+        /** Skip Session Problem */
+        post: operations["skip_session_problem_session_skip_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/session/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Session */
+        post: operations["start_session_session_start_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -123,59 +106,76 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/turn": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit Turn */
+        post: operations["submit_turn_turn_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /** AssessmentRequest */
         AssessmentRequest: {
+            /** Context Key */
+            context_key: string;
             /** Session Id */
             session_id: string;
             /** Skill Id */
             skill_id: string;
-            /** Context Key */
-            context_key: string;
         };
         /** DiagnosticModel */
         DiagnosticModel: {
-            /** Student Error Tag */
-            student_error_tag: string;
             /** Confidence */
             confidence: string;
             /** Matched Pattern */
             matched_pattern?: string | null;
             /** Safe Hint Level Cap */
             safe_hint_level_cap: number;
+            /** Student Error Tag */
+            student_error_tag: string;
         };
         /** GraphModel */
         GraphModel: {
             /** Kind */
             kind: string;
-            /** X Min */
-            x_min: number;
-            /** X Max */
-            x_max: number;
-            /** Y Min */
-            y_min: number;
-            /** Y Max */
-            y_max: number;
             /** Points */
             points: number[][];
             /** Show Grid */
             show_grid: boolean;
+            /** X Max */
+            x_max: number;
+            /** X Min */
+            x_min: number;
+            /** Y Max */
+            y_max: number;
+            /** Y Min */
+            y_min: number;
         };
         /** GridModel */
         GridModel: {
-            /** X Min */
-            x_min: number;
-            /** X Max */
-            x_max: number;
-            /** Y Min */
-            y_min: number;
-            /** Y Max */
-            y_max: number;
             /** Show Grid */
             show_grid: boolean;
+            /** X Max */
+            x_max: number;
+            /** X Min */
+            x_min: number;
+            /** Y Max */
+            y_max: number;
+            /** Y Min */
+            y_min: number;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -184,8 +184,6 @@ export interface components {
         };
         /** HintScaffoldModel */
         HintScaffoldModel: {
-            /** Max Safe Hint Level */
-            max_safe_hint_level: number;
             /** Level 0 */
             level_0: string;
             /** Level 1 */
@@ -194,6 +192,8 @@ export interface components {
             level_2: string;
             /** Level 3 */
             level_3?: string | null;
+            /** Max Safe Hint Level */
+            max_safe_hint_level: number;
         };
         /** ProblemRefModel */
         ProblemRefModel: {
@@ -204,46 +204,46 @@ export interface components {
         };
         /** PublicProblemModel */
         PublicProblemModel: {
-            ref: components["schemas"]["ProblemRefModel"];
-            /** Skill Id */
-            skill_id: string;
             /** Answer Type */
             answer_type: string;
             /** Checker */
             checker: string;
-            /** Representations */
-            representations: string[];
-            /** Prompt */
-            prompt: string;
             graph?: components["schemas"]["GraphModel"] | null;
-            table?: components["schemas"]["TableModel"] | null;
             grid?: components["schemas"]["GridModel"] | null;
             hint_scaffold: components["schemas"]["HintScaffoldModel"];
+            /** Prompt */
+            prompt: string;
+            ref: components["schemas"]["ProblemRefModel"];
+            /** Representations */
+            representations: string[];
+            /** Skill Id */
+            skill_id: string;
+            table?: components["schemas"]["TableModel"] | null;
         };
         /** SkillStateModel */
         SkillStateModel: {
-            /** Skill Id */
-            skill_id: string;
             /** Attempt Count */
             attempt_count: number;
-            /** Contexts Seen */
-            contexts_seen: string[];
-            /** Transfer Passed */
-            transfer_passed: boolean;
-            /** Retention Passed */
-            retention_passed: boolean;
             /** Concept Mastered */
             concept_mastered: boolean;
+            /** Contexts Seen */
+            contexts_seen: string[];
+            /** Retention Passed */
+            retention_passed: boolean;
+            /** Skill Id */
+            skill_id: string;
+            /** Transfer Passed */
+            transfer_passed: boolean;
         };
         /** SkipRequest */
         SkipRequest: {
-            /** Session Id */
-            session_id: string;
             /**
              * Reason
              * @default stuck
              */
             reason: string;
+            /** Session Id */
+            session_id: string;
         };
         /** StartSessionRequest */
         StartSessionRequest: {
@@ -266,44 +266,44 @@ export interface components {
         };
         /** TurnRequest */
         TurnRequest: {
-            /** Session Id */
-            session_id: string;
-            /** Idempotency Key */
-            idempotency_key: string;
             /** Answer */
             answer: string;
+            /** Idempotency Key */
+            idempotency_key: string;
+            /** Session Id */
+            session_id: string;
         };
         /** TurnResponseModel */
         TurnResponseModel: {
-            /** Session Id */
-            session_id: string;
-            public_problem: components["schemas"]["PublicProblemModel"];
-            /** Dialogue */
-            dialogue: string;
-            /** Pedagogical Move */
-            pedagogical_move: string;
             /** Check Result */
             check_result?: string | null;
-            /** Xp Awarded */
-            xp_awarded: number;
-            /** Proposed Hint Level */
-            proposed_hint_level: number;
+            diagnostic?: components["schemas"]["DiagnosticModel"] | null;
+            /** Dialogue */
+            dialogue: string;
             /** Guardrail Fires */
             guardrail_fires: string[];
-            diagnostic?: components["schemas"]["DiagnosticModel"] | null;
+            /** Pedagogical Move */
+            pedagogical_move: string;
+            /** Proposed Hint Level */
+            proposed_hint_level: number;
+            public_problem: components["schemas"]["PublicProblemModel"];
+            /** Session Id */
+            session_id: string;
+            /** Xp Awarded */
+            xp_awarded: number;
         };
         /** ValidationError */
         ValidationError: {
+            /** Context */
+            ctx?: Record<string, never>;
+            /** Input */
+            input?: unknown;
             /** Location */
             loc: (string | number)[];
             /** Message */
             msg: string;
             /** Error Type */
             type: string;
-            /** Input */
-            input?: unknown;
-            /** Context */
-            ctx?: Record<string, never>;
         };
     };
     responses: never;
@@ -314,29 +314,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    health_health_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
-                };
-            };
-        };
-    };
-    start_session_session_start_post: {
+    record_retention_assessment_retention_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -345,7 +323,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["StartSessionRequest"];
+                "application/json": components["schemas"]["AssessmentRequest"];
             };
         };
         responses: {
@@ -355,73 +333,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TurnResponseModel"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    submit_turn_turn_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TurnRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TurnResponseModel"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    skip_session_problem_session_skip_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SkipRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TurnResponseModel"];
+                    "application/json": components["schemas"]["SkillStateModel"];
                 };
             };
             /** @description Validation Error */
@@ -468,7 +380,29 @@ export interface operations {
             };
         };
     };
-    record_retention_assessment_retention_post: {
+    health_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+        };
+    };
+    skip_session_problem_session_skip_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -477,7 +411,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["AssessmentRequest"];
+                "application/json": components["schemas"]["SkipRequest"];
             };
         };
         responses: {
@@ -487,7 +421,40 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SkillStateModel"];
+                    "application/json": components["schemas"]["TurnResponseModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_session_session_start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TurnResponseModel"];
                 };
             };
             /** @description Validation Error */
@@ -522,6 +489,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SkillStateModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_turn_turn_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TurnRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TurnResponseModel"];
                 };
             };
             /** @description Validation Error */

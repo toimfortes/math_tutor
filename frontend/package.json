@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
-    "test": "vitest"
+    "test": "vitest",
+    "generate:api": "python ../scripts/export_openapi.py && openapi-typescript openapi.json -o src/generated/apiSchema.ts",
+    "check:api": "npm run generate:api && git diff --exit-code src/generated/apiSchema.ts"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.1.1",
@@ -21,6 +23,7 @@
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "jsdom": "^27.2.0",
+    "openapi-typescript": "7.13.0",
     "vitest": "^4.0.14"
   }
 }
