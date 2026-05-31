@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from backend.content_pipeline.verify import verify_frozen_gold_bank
 from backend.app.llm.guardrails import GuardrailInput, apply_guardrails
 
 
@@ -58,6 +59,8 @@ def run() -> list[str]:
         result = apply_guardrails(case.payload)
         if case.expected_fire not in result.guardrail_fires:
             failures.append(case.name)
+    if not verify_frozen_gold_bank().ok:
+        failures.append("content_pipeline")
     return failures
 
 
