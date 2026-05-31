@@ -56,6 +56,9 @@ class ProblemBank:
             raise KeyError(ref)
         return private
 
+    def public_refs(self) -> tuple[RealizedProblemRef, ...]:
+        return tuple(self._public)
+
 
 def load_gold_problem_bank(path: Path | None = None) -> ProblemBank:
     gold_path = path or DEFAULT_GOLD_PATH

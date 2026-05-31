@@ -1,0 +1,120 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from uuid import uuid4
+
+from backend.app.content.seed_loader import ProblemBank, PublicProblem, RealizedProblemRef
+from backend.app.domain.checker import check_answer
+from backend.app.domain.diagnostic_checker import DiagnosticResult, diagnose_answer
+from backend.app.domain.help_ceiling import compute_allowed_help_level
+from backend.app.domain.mastery import ProblemAttempt, SubmissionEvent
+from backend.app.domain.scheduler import RoundRobinScheduler
+from backend.app.domain.xp import compute_xp_award
+from backend.app.llm.mock_client import MockLLMClient
+
+
+@dataclass
+class SessionState:
+    session_id: str
+    student_id: str
+    theme: str
+    active_ref: RealizedProblemRef
+    attempts: list[ProblemAttempt] = field(default_factory=list)
+    idempotency: dict[str, "TurnResponse"] = field(default_factory=dict)
+
+
+@dataclass
+class InMemoryTurnStore:
+    sessions: dict[str, SessionState] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class TurnResponse:
+    session_id: str
+    public_problem: PublicProblem
+    dialogue: str
+    pedagogical_move: str
+    check_result: str | None
+    xp_awarded: int
+    diagnostic: DiagnosticResult | None = None
+
+
+class TurnService:
+    def __init__(self, *, problem_bank: ProblemBank, llm_client: MockLLMClient, store: InMemoryTurnStore):
+        self.problem_bank = problem_bank
+        self.llm_client = llm_client
+        self.store = store
+        self.scheduler = RoundRobinScheduler(problem_bank)
+
+    def start_session(self, *, student_id: str, theme: str) -> TurnResponse:
+        session_id = str(uuid4())
+        active_ref = self.scheduler.first_ref(theme=theme)
+        state = SessionState(session_id=session_id, student_id=student_id, theme=theme, active_ref=active_ref)
+        self.store.sessions[session_id] = state
+        llm = self.llm_client.generate(check_result=None, diagnostic=None, presenting_next=True, allowed_help_level=0)
+        return TurnResponse(
+            session_id=session_id,
+            public_problem=self.problem_bank.public_problem(active_ref),
+            dialogue=llm.dialogue,
+            pedagogical_move=llm.pedagogical_move,
+            check_result=None,
+            xp_awarded=0,
+        )
+
+    def submit_turn(self, session_id: str, *, idempotency_key: str, answer: str) -> TurnResponse:
+        state = self.store.sessions[session_id]
+        if idempotency_key in state.idempotency:
+            return state.idempotency[idempotency_key]
+
+        current_ref = state.active_ref
+        public = self.problem_bank.public_problem(current_ref)
+        private = self.problem_bank.private_problem(current_ref)
+        check = check_answer(answer, private.canonical_answer, answer_type=public.answer_type, variable=_variable_from_answer(private.canonical_answer))
+        diagnostic = diagnose_answer(
+            student_answer=answer,
+            canonical_answer=private.canonical_answer,
+            answer_type=public.answer_type,
+            known_wrong_answers=_known_wrong_answers(current_ref),
+            variable=_variable_from_answer(private.canonical_answer),
+        )
+        submission = SubmissionEvent(check_result=check.check_result, hint_level=0)
+        attempt = ProblemAttempt(problem_attempt_id=idempotency_key, skill_id=public.skill_id, submissions=[submission])
+        state.attempts.append(attempt)
+        xp = compute_xp_award(attempt, already_awarded=False).points
+
+        presenting_next = check.check_result == "correct"
+        if presenting_next:
+            state.active_ref = self.scheduler.next_ref(current_ref, theme=state.theme)
+
+        active_public = self.problem_bank.public_problem(state.active_ref)
+        allowed_help = compute_allowed_help_level(attempt.submissions, max_safe_hint_level=active_public.hint_scaffold.max_safe_hint_level)
+        llm = self.llm_client.generate(
+            check_result=check.check_result,
+            diagnostic=diagnostic,
+            presenting_next=presenting_next,
+            allowed_help_level=allowed_help,
+        )
+        response = TurnResponse(
+            session_id=session_id,
+            public_problem=active_public,
+            dialogue=llm.dialogue,
+            pedagogical_move=llm.pedagogical_move,
+            check_result=check.check_result,
+            xp_awarded=xp,
+            diagnostic=diagnostic,
+        )
+        state.idempotency[idempotency_key] = response
+        return response
+
+
+def _known_wrong_answers(ref: RealizedProblemRef) -> dict[str, str]:
+    if ref.problem_id == "lf_p04":
+        return {"inverted_slope": "1/3", "sign_error": "-3"}
+    return {}
+
+
+def _variable_from_answer(answer: str) -> str | None:
+    for char in ("x", "d", "t", "k", "S", "A", "F", "v", "P", "H"):
+        if char in answer:
+            return char
+    return None
