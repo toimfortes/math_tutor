@@ -3,8 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import yaml
-
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -18,11 +16,11 @@ def test_frontend_package_has_reproducible_api_codegen_scripts():
 
 
 def test_ci_checks_generated_api_schema_drift():
-    workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
-    frontend_steps = workflow["jobs"]["frontend"]["steps"]
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text()
 
-    assert any(step.get("name") == "Check generated API schema drift" for step in frontend_steps)
-    assert any(step.get("run") == "npm run check:api" for step in frontend_steps)
+    assert "name: Check generated API schema drift" in workflow
+    assert "run: npm run check:api" in workflow
+    assert "name: Install backend dependencies for OpenAPI export" in workflow
 
 
 def test_openapi_export_script_is_tracked():
