@@ -148,6 +148,17 @@ def _turn_response_to_dict(response: TurnResponse) -> dict:
             "checker": public.checker,
             "representations": list(public.representations),
             "prompt": public.prompt,
+            "graph": None
+            if public.graph is None
+            else {
+                "kind": public.graph.kind,
+                "x_min": public.graph.x_min,
+                "x_max": public.graph.x_max,
+                "y_min": public.graph.y_min,
+                "y_max": public.graph.y_max,
+                "points": [[point[0], point[1]] for point in public.graph.points],
+                "show_grid": public.graph.show_grid,
+            },
             "hint_scaffold": {
                 "max_safe_hint_level": public.hint_scaffold.max_safe_hint_level,
                 "level_0": public.hint_scaffold.level_0,

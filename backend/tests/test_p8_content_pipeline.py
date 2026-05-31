@@ -1,6 +1,12 @@
 from __future__ import annotations
 
-from backend.app.content.seed_loader import load_gold_problem_bank
+import json
+
+from backend.app.content.seed_loader import (
+    DEFAULT_GOLD_PATH,
+    RealizedProblemRef,
+    load_gold_problem_bank,
+)
 from backend.content_pipeline.templates.linear_functions import (
     LINEAR_FUNCTION_TEMPLATE_CASES,
     known_wrong_answers,
@@ -40,3 +46,52 @@ def test_frozen_gold_bank_verifier_runs_deterministic_ci_checks():
     assert report.template_case_count == 48
     assert report.safety_terms == []
     assert report.public_leaks == []
+    assert report.graph_errors == []
+
+
+def test_graph_problems_expose_public_safe_graph_payload():
+    bank = load_gold_problem_bank()
+
+    for problem_id in ("lf_p07", "lf_p08", "lf_p10"):
+        public = bank.public_problem(RealizedProblemRef(problem_id, "neutral"))
+        assert "graph" in public.representations
+        assert public.graph is not None
+        assert public.graph.kind == "line"
+        assert len(public.graph.points) >= 2
+        assert public.graph.x_min < public.graph.x_max
+        assert public.graph.y_min < public.graph.y_max
+
+    # graph geometry is theme-independent, so themed realizations share it.
+    themed = bank.public_problem(RealizedProblemRef("lf_p07", "drone_physics"))
+    assert themed.graph == bank.public_problem(RealizedProblemRef("lf_p07", "neutral")).graph
+
+    # text-only problems carry no graph payload.
+    assert bank.public_problem(RealizedProblemRef("lf_p09", "neutral")).graph is None
+
+
+def test_verifier_flags_graph_representation_without_payload(tmp_path):
+    data = json.loads(DEFAULT_GOLD_PATH.read_text())
+    for item in data["problems"]:
+        if item["id"] == "lf_p07":
+            del item["graph"]
+    broken = tmp_path / "broken.json"
+    broken.write_text(json.dumps(data))
+
+    report = verify_frozen_gold_bank(broken)
+
+    assert not report.ok
+    assert any("lf_p07" in error for error in report.graph_errors)
+
+
+def test_verifier_flags_graph_payload_with_answer_metadata(tmp_path):
+    data = json.loads(DEFAULT_GOLD_PATH.read_text())
+    for item in data["problems"]:
+        if item["id"] == "lf_p07":
+            item["graph"]["canonical_answer"] = "2"
+    broken = tmp_path / "leaky.json"
+    broken.write_text(json.dumps(data))
+
+    report = verify_frozen_gold_bank(broken)
+
+    assert not report.ok
+    assert any("lf_p07" in error for error in report.graph_errors)

@@ -20,6 +20,7 @@ def test_deterministic_eval_harness_includes_content_pipeline_gate(monkeypatch):
             template_errors=["lf_p01/neutral mismatch"],
             role_errors=[],
             public_leaks=[],
+            graph_errors=[],
         ),
         raising=False,
     )

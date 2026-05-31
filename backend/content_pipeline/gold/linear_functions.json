@@ -363,6 +363,18 @@
       "representations": [
         "graph"
       ],
+      "graph": {
+        "kind": "line",
+        "x_min": -1,
+        "x_max": 5,
+        "y_min": -1,
+        "y_max": 6,
+        "points": [
+          [0, 0],
+          [1, 2]
+        ],
+        "show_grid": true
+      },
       "assessment_role": "practice",
       "neutral": {
         "prompt": "A line on a graph rises 2 units for every 1 unit it moves to the right. What is its slope?",
@@ -397,6 +409,18 @@
       "representations": [
         "graph"
       ],
+      "graph": {
+        "kind": "line",
+        "x_min": -1,
+        "x_max": 8,
+        "y_min": -1,
+        "y_max": 6,
+        "points": [
+          [0, 0],
+          [4, 3]
+        ],
+        "show_grid": true
+      },
       "assessment_role": "transfer",
       "neutral": {
         "prompt": "A line passes through grid points, going up 3 squares for every 4 squares to the right. What is its slope? Give an exact value.",
@@ -465,6 +489,18 @@
       "representations": [
         "graph"
       ],
+      "graph": {
+        "kind": "line",
+        "x_min": -1,
+        "x_max": 8,
+        "y_min": -1,
+        "y_max": 14,
+        "points": [
+          [0, 12],
+          [6, 0]
+        ],
+        "show_grid": true
+      },
       "assessment_role": "practice",
       "neutral": {
         "prompt": "A line crosses the vertical axis at the point (0, 12). What is its y-intercept?",

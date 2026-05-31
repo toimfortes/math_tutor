@@ -22,6 +22,7 @@ class FrozenBankVerificationReport:
     template_errors: list[str]
     role_errors: list[str]
     public_leaks: list[str]
+    graph_errors: list[str]
 
 
 def verify_frozen_gold_bank(path: Path | None = None) -> FrozenBankVerificationReport:
@@ -35,9 +36,10 @@ def verify_frozen_gold_bank(path: Path | None = None) -> FrozenBankVerificationR
     template_errors = _template_errors(cases_by_ref, public_refs, bank)
     role_errors = _role_errors(cases_by_ref, public_refs)
     public_leaks = _public_leaks(data)
+    graph_errors = _graph_errors(data)
     safety_terms = check_gold_file(gold_path)
     realization_count = sum(1 + len(item.get("themed", {})) for item in data.get("problems", []))
-    ok = not (schema_errors or template_errors or role_errors or public_leaks or safety_terms)
+    ok = not (schema_errors or template_errors or role_errors or public_leaks or graph_errors or safety_terms)
 
     return FrozenBankVerificationReport(
         ok=ok,
@@ -49,6 +51,7 @@ def verify_frozen_gold_bank(path: Path | None = None) -> FrozenBankVerificationR
         template_errors=template_errors,
         role_errors=role_errors,
         public_leaks=public_leaks,
+        graph_errors=graph_errors,
     )
 
 
@@ -107,6 +110,41 @@ def _role_errors(cases_by_ref: dict[Any, Any], public_refs: set[Any]) -> list[st
     return errors
 
 
+GRAPH_ALLOWED_KEYS = {"kind", "x_min", "x_max", "y_min", "y_max", "points", "show_grid"}
+
+
+def _graph_errors(data: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    for item in data.get("problems", []):
+        problem_id = item.get("id", "<missing>")
+        has_graph_rep = "graph" in item.get("representations", [])
+        graph = item.get("graph")
+        if has_graph_rep and graph is None:
+            errors.append(f"{problem_id}: graph representation requires a graph payload")
+            continue
+        if graph is None:
+            continue
+        if not has_graph_rep:
+            errors.append(f"{problem_id}: graph payload requires a graph representation")
+        extra_keys = set(graph) - GRAPH_ALLOWED_KEYS
+        if extra_keys:
+            errors.append(f"{problem_id}: graph payload has disallowed keys {sorted(extra_keys)}")
+        missing_keys = GRAPH_ALLOWED_KEYS - set(graph)
+        if missing_keys:
+            errors.append(f"{problem_id}: graph payload missing keys {sorted(missing_keys)}")
+            continue
+        if graph["kind"] != "line":
+            errors.append(f"{problem_id}: graph kind must be 'line'")
+        points = graph["points"]
+        if not isinstance(points, list) or len(points) < 2:
+            errors.append(f"{problem_id}: graph payload needs at least two points")
+        elif not all(isinstance(point, list) and len(point) == 2 for point in points):
+            errors.append(f"{problem_id}: graph points must be [x, y] pairs")
+        if graph["x_min"] >= graph["x_max"] or graph["y_min"] >= graph["y_max"]:
+            errors.append(f"{problem_id}: graph bounds must be ordered (min < max)")
+    return errors
+
+
 def _public_leaks(data: dict[str, Any]) -> list[str]:
     leaks: list[str] = []
     for item in data.get("problems", []):
@@ -147,7 +185,13 @@ def _realizations(item: dict[str, Any]) -> dict[str, dict[str, Any]]:
 def main() -> None:
     report = verify_frozen_gold_bank()
     if not report.ok:
-        errors = report.schema_errors + report.template_errors + report.role_errors + report.public_leaks
+        errors = (
+            report.schema_errors
+            + report.template_errors
+            + report.role_errors
+            + report.public_leaks
+            + report.graph_errors
+        )
         if report.safety_terms:
             errors.append(f"unsafe terms: {', '.join(report.safety_terms)}")
         raise SystemExit("\n".join(errors))
