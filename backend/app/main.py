@@ -173,6 +173,15 @@ def _turn_response_to_dict(response: TurnResponse) -> dict:
                 "output_label": public.table.output_label,
                 "rows": [[row[0], row[1]] for row in public.table.rows],
             },
+            "grid": None
+            if public.grid is None
+            else {
+                "x_min": public.grid.x_min,
+                "x_max": public.grid.x_max,
+                "y_min": public.grid.y_min,
+                "y_max": public.grid.y_max,
+                "show_grid": public.grid.show_grid,
+            },
             "hint_scaffold": {
                 "max_safe_hint_level": public.hint_scaffold.max_safe_hint_level,
                 "level_0": public.hint_scaffold.level_0,

@@ -48,6 +48,7 @@ def test_frozen_gold_bank_verifier_runs_deterministic_ci_checks():
     assert report.public_leaks == []
     assert report.graph_errors == []
     assert report.table_errors == []
+    assert report.grid_errors == []
 
 
 def test_graph_problems_expose_public_safe_graph_payload():
@@ -96,6 +97,49 @@ def test_verifier_flags_graph_payload_with_answer_metadata(tmp_path):
 
     assert not report.ok
     assert any("lf_p07" in error for error in report.graph_errors)
+
+
+def test_grid_problem_exposes_a_pointless_grid_payload():
+    bank = load_gold_problem_bank()
+
+    p01 = bank.public_problem(RealizedProblemRef("lf_p01", "neutral"))
+    assert "grid" in p01.representations
+    assert p01.grid is not None
+    assert p01.grid.x_min < p01.grid.x_max
+    assert p01.grid.y_min < p01.grid.y_max
+    # the plot-a-point answer must NOT be embedded: a grid payload carries no points.
+    assert not hasattr(p01.grid, "points")
+
+    # non-grid problems carry no grid payload.
+    assert bank.public_problem(RealizedProblemRef("lf_p09", "neutral")).grid is None
+
+
+def test_verifier_flags_grid_representation_without_payload(tmp_path):
+    data = json.loads(DEFAULT_GOLD_PATH.read_text())
+    for item in data["problems"]:
+        if item["id"] == "lf_p01":
+            del item["grid"]
+    broken = tmp_path / "broken_grid.json"
+    broken.write_text(json.dumps(data))
+
+    report = verify_frozen_gold_bank(broken)
+
+    assert not report.ok
+    assert any("lf_p01" in error for error in report.grid_errors)
+
+
+def test_verifier_flags_grid_payload_carrying_points(tmp_path):
+    data = json.loads(DEFAULT_GOLD_PATH.read_text())
+    for item in data["problems"]:
+        if item["id"] == "lf_p01":
+            item["grid"]["points"] = [[4, 3]]
+    broken = tmp_path / "leaky_grid.json"
+    broken.write_text(json.dumps(data))
+
+    report = verify_frozen_gold_bank(broken)
+
+    assert not report.ok
+    assert any("lf_p01" in error for error in report.grid_errors)
 
 
 def test_table_problems_expose_public_safe_table_payload():

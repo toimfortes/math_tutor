@@ -24,6 +24,7 @@ class FrozenBankVerificationReport:
     public_leaks: list[str]
     graph_errors: list[str]
     table_errors: list[str]
+    grid_errors: list[str]
 
 
 def verify_frozen_gold_bank(path: Path | None = None) -> FrozenBankVerificationReport:
@@ -39,6 +40,7 @@ def verify_frozen_gold_bank(path: Path | None = None) -> FrozenBankVerificationR
     public_leaks = _public_leaks(data)
     graph_errors = _graph_errors(data)
     table_errors = _table_errors(data)
+    grid_errors = _grid_errors(data)
     safety_terms = check_gold_file(gold_path)
     realization_count = sum(1 + len(item.get("themed", {})) for item in data.get("problems", []))
     ok = not (
@@ -48,6 +50,7 @@ def verify_frozen_gold_bank(path: Path | None = None) -> FrozenBankVerificationR
         or public_leaks
         or graph_errors
         or table_errors
+        or grid_errors
         or safety_terms
     )
 
@@ -63,6 +66,7 @@ def verify_frozen_gold_bank(path: Path | None = None) -> FrozenBankVerificationR
         public_leaks=public_leaks,
         graph_errors=graph_errors,
         table_errors=table_errors,
+        grid_errors=grid_errors,
     )
 
 
@@ -157,6 +161,36 @@ def _graph_errors(data: dict[str, Any]) -> list[str]:
     return errors
 
 
+GRID_ALLOWED_KEYS = {"x_min", "x_max", "y_min", "y_max", "show_grid"}
+
+
+def _grid_errors(data: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    for item in data.get("problems", []):
+        problem_id = item.get("id", "<missing>")
+        has_grid_rep = "grid" in item.get("representations", [])
+        grid = item.get("grid")
+        if has_grid_rep and grid is None:
+            errors.append(f"{problem_id}: grid representation requires a grid payload")
+            continue
+        if grid is None:
+            continue
+        if not has_grid_rep:
+            errors.append(f"{problem_id}: grid payload requires a grid representation")
+        # A grid payload renders only the empty plane, never data points — that is
+        # what keeps plot-a-point answers out of the public payload.
+        extra_keys = set(grid) - GRID_ALLOWED_KEYS
+        if extra_keys:
+            errors.append(f"{problem_id}: grid payload has disallowed keys {sorted(extra_keys)}")
+        missing_keys = GRID_ALLOWED_KEYS - set(grid)
+        if missing_keys:
+            errors.append(f"{problem_id}: grid payload missing keys {sorted(missing_keys)}")
+            continue
+        if grid["x_min"] >= grid["x_max"] or grid["y_min"] >= grid["y_max"]:
+            errors.append(f"{problem_id}: grid bounds must be ordered (min < max)")
+    return errors
+
+
 TABLE_ALLOWED_KEYS = {"input_label", "output_label", "rows"}
 
 
@@ -237,6 +271,7 @@ def main() -> None:
             + report.public_leaks
             + report.graph_errors
             + report.table_errors
+            + report.grid_errors
         )
         if report.safety_terms:
             errors.append(f"unsafe terms: {', '.join(report.safety_terms)}")

@@ -54,3 +54,20 @@ def test_turn_response_omits_table_for_text_problems():
     data = _turn_response_to_dict(_turn_response_for("lf_p09"))
 
     assert data["public_problem"]["table"] is None
+
+
+def test_turn_response_serializes_grid_payload_without_points():
+    data = _turn_response_to_dict(_turn_response_for("lf_p01"))
+
+    grid = data["public_problem"]["grid"]
+    assert grid["x_min"] < grid["x_max"]
+    assert grid["y_min"] < grid["y_max"]
+    assert grid["show_grid"] is True
+    # the grid never carries the answer point.
+    assert "points" not in grid
+
+
+def test_turn_response_omits_grid_for_text_problems():
+    data = _turn_response_to_dict(_turn_response_for("lf_p09"))
+
+    assert data["public_problem"]["grid"] is None

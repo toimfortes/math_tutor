@@ -156,6 +156,13 @@
       "representations": [
         "grid"
       ],
+      "grid": {
+        "x_min": -1,
+        "x_max": 6,
+        "y_min": -1,
+        "y_max": 6,
+        "show_grid": true
+      },
       "assessment_role": "practice",
       "neutral": {
         "prompt": "A point is 4 units to the right of the origin and 3 units up. Write its coordinates as (x, y).",
