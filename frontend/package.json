@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "test": "vitest",
     "generate:api": "python ../scripts/export_openapi.py && openapi-typescript openapi.json -o src/generated/apiSchema.ts",
-    "check:api": "npm run generate:api && git diff --exit-code src/generated/apiSchema.ts"
+    "check:api": "npm run generate:api && git diff --exit-code src/generated/apiSchema.ts",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.1.1",
@@ -19,6 +20,7 @@
     "vite": "^7.2.4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@types/node": "^25.9.1",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
