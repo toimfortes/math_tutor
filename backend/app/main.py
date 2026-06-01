@@ -195,6 +195,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 check_result=result,
                 xp_awarded=0,
             )
+        diagnostic = None
+        if result != "correct":
+            d = practice_bank.diagnose(request.problem_id, request.answer)
+            if d is not None and d.student_error_tag not in {"unknown", "none"}:
+                diagnostic = {
+                    "student_error_tag": d.student_error_tag,
+                    "confidence": d.confidence,
+                    "matched_pattern": d.matched_pattern,
+                    "safe_hint_level_cap": d.safe_hint_level_cap,
+                }
         practice_logger.info(
             "practice_checked",
             extra={
@@ -202,9 +212,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "problem_id": problem.id,
                 "skill_id": problem.skill_id,
                 "check_result": result,
+                "student_error_tag": diagnostic["student_error_tag"] if diagnostic else None,
             },
         )
-        return {"check_result": result}
+        return {"check_result": result, "diagnostic": diagnostic}
 
     @app.post("/session/start", response_model=TurnResponseModel)
     def start_session(request: StartSessionRequest, student_id: str = Depends(require_auth_token)) -> dict:

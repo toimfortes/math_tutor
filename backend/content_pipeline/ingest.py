@@ -569,7 +569,7 @@ def export_practice_bank(db_path: Path | str, output_path: Path | str) -> int:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             "SELECT pi.id AS id, pi.skill_id AS skill_id, pi.answer_type AS answer_type, pi.checker AS checker, "
-            "pi.representations AS representations, t.template_kind AS kind, "
+            "pi.representations AS representations, pi.extra_json AS extra_json, t.template_kind AS kind, "
             "pr.prompt AS prompt, pr.canonical_answer AS canonical_answer, pr.param_values AS param_values, "
             "hs.max_safe_hint_level AS msh, hs.level_0 AS l0, hs.level_1 AS l1, hs.level_2 AS l2, hs.level_3 AS l3 "
             "FROM problem_item pi "
@@ -588,6 +588,7 @@ def export_practice_bank(db_path: Path | str, output_path: Path | str) -> int:
             "checker": row["checker"],
             "representations": json.loads(row["representations"]),
             "params": json.loads(row["param_values"]),
+            "known_wrong_answers": json.loads(row["extra_json"]).get("known_wrong_answers", {}),
             "neutral": {
                 "prompt": row["prompt"],
                 "canonical_answer": row["canonical_answer"],

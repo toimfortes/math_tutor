@@ -48,3 +48,20 @@ def test_validate_candidate_rejects_non_round_tripping_answer():
     broken = type(clean)(**{**clean.__dict__, "canonical_answer": "not-a-number"})
 
     assert validate_candidate(broken)  # determinism gate fails
+
+
+def test_validate_candidate_rejects_distractor_that_collides_with_the_answer():
+    clean = generate_candidate("lin_slope_two_points", 0)  # canonical "2"
+    # a "distractor" equal to the correct answer is not a real misconception distractor
+    bad = type(clean)(**{**clean.__dict__, "known_wrong": {"bogus": clean.canonical_answer}})
+
+    errors = validate_candidate(bad)
+    assert any("distractor" in error for error in errors)
+
+
+def test_generated_slope_candidates_have_distinct_valid_distractors():
+    # the conceptual gate should pass for real generated slope items (slope >= 2,
+    # so sign_error and inverted_slope never equal the answer)
+    for candidate in generate_validated_candidates("lin_slope_two_points", 5):
+        assert candidate.known_wrong  # slope kinds carry distractors
+        assert validate_candidate(candidate) == []

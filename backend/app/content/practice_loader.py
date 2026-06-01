@@ -15,6 +15,7 @@ from pathlib import Path
 
 from backend.app.content.seed_loader import HintScaffold
 from backend.app.domain.checker import check_answer
+from backend.app.domain.diagnostic_checker import DiagnosticResult, diagnose_answer
 
 
 @dataclass(frozen=True)
@@ -28,6 +29,7 @@ class PracticeProblem:
     hint_scaffold: HintScaffold
     canonical_answer: str
     variable: str | None
+    known_wrong: dict[str, str]
 
 
 class PracticeBank:
@@ -65,6 +67,18 @@ class PracticeBank:
             answer, problem.canonical_answer, answer_type=problem.answer_type, variable=problem.variable
         ).check_result
 
+    def diagnose(self, problem_id: str, answer: str) -> DiagnosticResult | None:
+        problem = self._by_id.get(problem_id)
+        if problem is None:
+            return None
+        return diagnose_answer(
+            student_answer=answer,
+            canonical_answer=problem.canonical_answer,
+            answer_type=problem.answer_type,
+            known_wrong_answers=problem.known_wrong,
+            variable=problem.variable,
+        )
+
 
 def load_practice_bank(path: Path | str) -> PracticeBank:
     data = json.loads(Path(path).read_text())
@@ -94,6 +108,7 @@ def load_practice_bank(path: Path | str) -> PracticeBank:
                 ),
                 canonical_answer=canonical,
                 variable=variable,
+                known_wrong=dict(raw.get("known_wrong_answers", {})),
             )
         )
     return PracticeBank(problems)

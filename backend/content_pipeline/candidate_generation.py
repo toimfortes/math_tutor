@@ -300,6 +300,18 @@ def validate_candidate(candidate: GeneratedCandidate) -> list[str]:
     if f"the answer is {candidate.canonical_answer}".lower() in candidate.prompt.lower():
         errors.append("prompt leaks the canonical answer")
 
+    # Conceptual gate: each misconception distractor must be a genuinely wrong
+    # answer. A distractor that grades as correct (e.g. a degenerate slope where
+    # the inverted/sign variant equals the answer) is not a valid distractor.
+    for tag, distractor in candidate.known_wrong.items():
+        if not distractor:
+            continue
+        if (
+            check_answer(distractor, candidate.canonical_answer, answer_type=candidate.answer_type).check_result
+            == "correct"
+        ):
+            errors.append(f"distractor '{tag}' collides with the canonical answer")
+
     return errors
 
 

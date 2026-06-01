@@ -73,6 +73,26 @@ def test_practice_check_grades_with_the_code_owned_checker(tmp_path):
     assert wrong.json()["check_result"] != "correct"
 
 
+def test_practice_check_returns_a_misconception_diagnostic(tmp_path):
+    import json
+
+    practice_path = _practice_bank(tmp_path)
+    settings = Settings.from_env({"PRACTICE_BANK_PATH": str(practice_path)})
+    client = TestClient(create_app(settings))
+    auth = _auth(client)
+
+    bank = json.loads(practice_path.read_text())
+    slope = next(p for p in bank["problems"] if p["skill_id"] == "lin_slope_two_points")
+    inverted_answer = slope["known_wrong_answers"]["inverted_slope"]
+
+    response = client.post(
+        "/practice/check", json={"problem_id": slope["id"], "answer": inverted_answer}, headers=auth
+    ).json()
+
+    assert response["check_result"] != "correct"
+    assert response["diagnostic"]["student_error_tag"] == "inverted_slope"
+
+
 def test_practice_endpoints_require_auth_and_handle_unknown_problem(tmp_path):
     settings = Settings.from_env({"PRACTICE_BANK_PATH": str(_practice_bank(tmp_path))})
     client = TestClient(create_app(settings))
