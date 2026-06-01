@@ -3,8 +3,10 @@ import { expect, test } from "@playwright/test";
 test("a student works the first problems in a real browser", async ({ page }) => {
   await page.goto("/");
 
-  // Start a session (default theme is space_logistics).
-  await page.getByRole("button", { name: "Start" }).first().click();
+  // Sign in (creates the account on first use), which starts a session.
+  await page.getByPlaceholder("e.g. ada").fill("ada");
+  await page.locator('input[type="password"]').fill("pw");
+  await page.getByRole("button", { name: "Sign in" }).click();
 
   // Problem 1 (lf_p01) uses the grid representation -> GridView paints an SVG.
   await expect(page.locator("svg.grid-view")).toBeVisible();

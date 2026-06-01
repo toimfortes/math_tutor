@@ -1,6 +1,17 @@
-import { ArrowRight, BadgeCheck, CalendarCheck2, CheckCircle2, CircleAlert, FastForward, RotateCcw, Send } from "lucide-react";
+import { ArrowRight, BadgeCheck, CalendarCheck2, CheckCircle2, CircleAlert, FastForward, LogIn, RotateCcw, Send } from "lucide-react";
 import { FormEvent, useState } from "react";
-import { getStudentState, recordRetention, recordTransfer, SkillState, skipProblem, startSession, submitTurn, TurnResponse } from "./api";
+import {
+  getStudentState,
+  login,
+  recordRetention,
+  recordTransfer,
+  registerAccount,
+  SkillState,
+  skipProblem,
+  startSession,
+  submitTurn,
+  TurnResponse,
+} from "./api";
 import { hintForLevel } from "./hints";
 import { ChatPanel } from "./components/ChatPanel";
 import { GraphView } from "./components/GraphView";
@@ -13,8 +24,6 @@ const THEMES = [
   { value: "neutral", label: "Neutral" },
 ];
 
-const STUDENT_ID = "local-student";
-
 export function App() {
   const [theme, setTheme] = useState("space_logistics");
   const [answer, setAnswer] = useState("");
@@ -25,22 +34,44 @@ export function App() {
   const [turnCount, setTurnCount] = useState(0);
   const [totalXp, setTotalXp] = useState(0);
   const [token, setToken] = useState<string | null>(null);
+  const [studentId, setStudentId] = useState("");
+  const [password, setPassword] = useState("");
+  const [authToken, setAuthToken] = useState<string | null>(null);
 
-  async function loadSkillState(nextTurn: TurnResponse, authToken: string) {
+  async function signIn(event: FormEvent) {
+    event.preventDefault();
+    if (!studentId.trim() || !password) return;
+    setBusy(true);
+    setError(null);
+    try {
+      // Create the account if it is new, then log in either way.
+      await registerAccount(fetch, { studentId: studentId.trim(), password });
+      const nextAuthToken = await login(fetch, { studentId: studentId.trim(), password });
+      setAuthToken(nextAuthToken);
+      await begin(theme, nextAuthToken);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to sign in");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function loadSkillState(nextTurn: TurnResponse, sessionToken: string) {
     const nextState = await getStudentState(fetch, {
-      studentId: STUDENT_ID,
+      studentId: studentId.trim(),
       sessionId: nextTurn.sessionId,
       skillId: nextTurn.publicProblem.skillId,
-      token: authToken,
+      token: sessionToken,
     });
     setSkillState(nextState);
   }
 
-  async function begin(selectedTheme = theme) {
+  async function begin(selectedTheme = theme, auth = authToken) {
+    if (!auth) return;
     setBusy(true);
     setError(null);
     try {
-      const next = await startSession(fetch, { studentId: STUDENT_ID, theme: selectedTheme });
+      const next = await startSession(fetch, { theme: selectedTheme, authToken: auth });
       setTurn(next);
       setToken(next.token);
       setAnswer("");
@@ -121,6 +152,40 @@ export function App() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (!authToken) {
+    return (
+      <main className="login-shell">
+        <form className="login-card" onSubmit={(event) => void signIn(event)}>
+          <p className="eyebrow">Gold slice</p>
+          <h1>Linear Functions Tutor</h1>
+          <label className="field">
+            <span>Student ID</span>
+            <input
+              value={studentId}
+              onChange={(event) => setStudentId(event.target.value)}
+              placeholder="e.g. ada"
+              autoComplete="username"
+            />
+          </label>
+          <label className="field">
+            <span>Password</span>
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="current-password"
+            />
+          </label>
+          <button className="primary" type="submit" disabled={busy || !studentId.trim() || !password}>
+            <LogIn size={18} />
+            Sign in
+          </button>
+          {error ? <p className="error">{error}</p> : null}
+        </form>
+      </main>
+    );
   }
 
   return (

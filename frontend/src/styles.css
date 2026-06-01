@@ -292,6 +292,33 @@ button:disabled {
   font-weight: 600;
 }
 
+.login-shell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.login-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 360px;
+  padding: 28px;
+  background: #ffffff;
+  border: 1px solid #d8dee8;
+  border-radius: 12px;
+}
+
+.login-card input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+}
+
 .answer-row {
   display: flex;
   gap: 12px;

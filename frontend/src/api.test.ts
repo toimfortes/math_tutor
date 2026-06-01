@@ -69,7 +69,7 @@ describe("tutor API client", () => {
       .fn()
       .mockResolvedValueOnce(new Response(JSON.stringify(turnPayload(graphProblem())), { status: 200 }));
 
-    const started = await startSession(fetchMock, { studentId: "student-1", theme: "neutral" });
+    const started = await startSession(fetchMock, { theme: "neutral", authToken: "test-token" });
 
     const graph = started.publicProblem.graph;
     expect(graph).not.toBeNull();
@@ -88,7 +88,7 @@ describe("tutor API client", () => {
       .fn()
       .mockResolvedValueOnce(new Response(JSON.stringify(turnPayload(problem("Prompt", "lf_p09"))), { status: 200 }));
 
-    const started = await startSession(fetchMock, { studentId: "student-1", theme: "neutral" });
+    const started = await startSession(fetchMock, { theme: "neutral", authToken: "test-token" });
 
     expect(started.publicProblem.graph).toBeNull();
   });
@@ -110,7 +110,7 @@ describe("tutor API client", () => {
       .fn()
       .mockResolvedValueOnce(new Response(JSON.stringify(turnPayload(tableProblem)), { status: 200 }));
 
-    const started = await startSession(fetchMock, { studentId: "student-1", theme: "neutral" });
+    const started = await startSession(fetchMock, { theme: "neutral", authToken: "test-token" });
 
     const table = started.publicProblem.table;
     expect(table).not.toBeNull();
@@ -127,7 +127,7 @@ describe("tutor API client", () => {
       .fn()
       .mockResolvedValueOnce(new Response(JSON.stringify(turnPayload(problem("Prompt", "lf_p09"))), { status: 200 }));
 
-    const started = await startSession(fetchMock, { studentId: "student-1", theme: "neutral" });
+    const started = await startSession(fetchMock, { theme: "neutral", authToken: "test-token" });
 
     expect(started.publicProblem.table).toBeNull();
   });
@@ -142,7 +142,7 @@ describe("tutor API client", () => {
       .fn()
       .mockResolvedValueOnce(new Response(JSON.stringify(turnPayload(gridProblem)), { status: 200 }));
 
-    const started = await startSession(fetchMock, { studentId: "student-1", theme: "neutral" });
+    const started = await startSession(fetchMock, { theme: "neutral", authToken: "test-token" });
 
     const grid = started.publicProblem.grid;
     expect(grid).not.toBeNull();
@@ -156,7 +156,7 @@ describe("tutor API client", () => {
       .fn()
       .mockResolvedValueOnce(new Response(JSON.stringify(turnPayload(problem("Prompt", "lf_p09"))), { status: 200 }));
 
-    const started = await startSession(fetchMock, { studentId: "student-1", theme: "neutral" });
+    const started = await startSession(fetchMock, { theme: "neutral", authToken: "test-token" });
 
     expect(started.publicProblem.grid).toBeNull();
   });
@@ -197,7 +197,7 @@ describe("tutor API client", () => {
         ),
       );
 
-    const started = await startSession(fetchMock, { studentId: "student-1", theme: "space_logistics" });
+    const started = await startSession(fetchMock, { theme: "space_logistics", authToken: "test-token" });
     const turn = await submitTurn(fetchMock, {
       sessionId: started.sessionId,
       idempotencyKey: "turn-1",

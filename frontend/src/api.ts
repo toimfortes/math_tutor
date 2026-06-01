@@ -93,14 +93,41 @@ export type SkillState = {
 
 type FetchLike = typeof fetch;
 
+export async function registerAccount(
+  fetcher: FetchLike,
+  params: { studentId: string; password: string },
+): Promise<void> {
+  const response = await fetcher("/api/auth/register", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ student_id: params.studentId, password: params.password }),
+  });
+  // 409 means the account already exists, which is fine — the caller will log in.
+  if (!response.ok && response.status !== 409) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+}
+
+export async function login(
+  fetcher: FetchLike,
+  params: { studentId: string; password: string },
+): Promise<string> {
+  const response = await fetcher("/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ student_id: params.studentId, password: params.password }),
+  });
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+  return (await response.json()).auth_token as string;
+}
+
 export async function startSession(
   fetcher: FetchLike,
-  params: { studentId: string; theme: string },
+  params: { theme: string; authToken: string },
 ): Promise<TurnResponse> {
-  return postJson(fetcher, "/api/session/start", {
-    student_id: params.studentId,
-    theme: params.theme,
-  });
+  return postTurnJson(fetcher, "/api/session/start", { theme: params.theme }, params.authToken);
 }
 
 export async function submitTurn(
@@ -171,10 +198,6 @@ export async function getStudentState(
 
 function authHeaders(token?: string): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
-async function postJson(fetcher: FetchLike, url: string, body: unknown): Promise<TurnResponse> {
-  return postTurnJson(fetcher, url, body);
 }
 
 async function postTurnJson(fetcher: FetchLike, url: string, body: unknown, token?: string): Promise<TurnResponse> {
