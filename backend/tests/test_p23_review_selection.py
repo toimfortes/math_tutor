@@ -80,7 +80,7 @@ def test_review_promotion_is_deterministic():
 
 
 # --------------------------------------------------------------------------- #
-# attempt_log.last_correct_ts_by_skill — cross-session                         #
+# attempt_log.mastery_by_skill — cross-session, distinct correct count         #
 # --------------------------------------------------------------------------- #
 
 
@@ -100,27 +100,33 @@ def _record(log, *, session_id, student_id, skill_id, problem_id, result, ts):
     log._conn.commit()
 
 
-def test_last_correct_counts_assessment_and_practice(tmp_path):
+def test_mastery_counts_assessment_and_practice(tmp_path):
     log = _attempt_log(tmp_path)
     _record(log, session_id="uuid-assess", student_id="stu", skill_id="s_assess", problem_id="p1", result="correct", ts=10.0)
     _record(log, session_id="practice:stu", student_id="stu", skill_id="s_practice", problem_id="p2", result="correct", ts=20.0)
-    out = dict(log.last_correct_ts_by_skill("stu"))
-    assert out == {"s_assess": 10.0, "s_practice": 20.0}  # cross-session
+    # cross-session; (skill, last_ts, distinct_count); ordered by skill_id
+    assert log.mastery_by_skill("stu") == [("s_assess", 10.0, 1), ("s_practice", 20.0, 1)]
 
 
-def test_last_correct_ignores_incorrect_and_takes_latest(tmp_path):
+def test_mastery_takes_latest_correct_and_counts_distinct(tmp_path):
     log = _attempt_log(tmp_path)
     _record(log, session_id="uuid", student_id="stu", skill_id="s1", problem_id="p1", result="correct", ts=10.0)
-    _record(log, session_id="uuid", student_id="stu", skill_id="s1", problem_id="p1", result="incorrect", ts=50.0)  # later wrong ignored
-    _record(log, session_id="uuid", student_id="stu", skill_id="s1", problem_id="p2", result="correct", ts=30.0)  # re-master
-    out = dict(log.last_correct_ts_by_skill("stu"))
-    assert out == {"s1": 30.0}  # latest CORRECT, incorrect ignored
+    _record(log, session_id="uuid", student_id="stu", skill_id="s1", problem_id="p1", result="incorrect", ts=50.0)  # ignored
+    _record(log, session_id="uuid", student_id="stu", skill_id="s1", problem_id="p2", result="correct", ts=30.0)
+    assert log.mastery_by_skill("stu") == [("s1", 30.0, 2)]  # latest correct ts, 2 distinct problems
 
 
-def test_last_correct_excludes_never_correct_skill(tmp_path):
+def test_mastery_same_problem_twice_counts_once(tmp_path):
+    log = _attempt_log(tmp_path)
+    _record(log, session_id="uuid", student_id="stu", skill_id="s1", problem_id="p1", result="correct", ts=10.0)
+    _record(log, session_id="uuid", student_id="stu", skill_id="s1", problem_id="p1", result="correct", ts=20.0)  # same problem
+    assert log.mastery_by_skill("stu") == [("s1", 20.0, 1)]  # distinct count stays 1
+
+
+def test_mastery_excludes_never_correct_skill(tmp_path):
     log = _attempt_log(tmp_path)
     _record(log, session_id="uuid", student_id="stu", skill_id="s1", problem_id="p1", result="incorrect", ts=10.0)
-    assert log.last_correct_ts_by_skill("stu") == []
+    assert log.mastery_by_skill("stu") == []
 
 
 # --------------------------------------------------------------------------- #
@@ -181,20 +187,55 @@ def test_lapsed_skill_is_promoted_to_front(tmp_path):
     items = [("a1", "A", 1, "1"), ("b1", "B", 1, "2"), ("b2", "B", 2, "3")]
     client, session_db = _client(tmp_path, items, now=now)
     auth = _auth(client)
-    # skill B mastered 5 days ago (lapsed, interval 2 days); A never mastered.
-    _seed(session_db, "ada", [("practice:ada", "B", "b1", "correct", now - 5 * DAY)])
+    # B mastered (2 DISTINCT correct problems) 5-6 days ago (lapsed); A never mastered.
+    _seed(session_db, "ada", [
+        ("practice:ada", "B", "b1", "correct", now - 6 * DAY),
+        ("practice:ada", "B", "b2", "correct", now - 5 * DAY),
+    ])
     problems = client.get("/practice/problems", headers=auth).json()["problems"]
     assert problems[0]["skill_id"] == "B"  # review-due skill promoted
 
 
-def test_recently_mastered_skill_is_not_promoted(tmp_path):
+def test_one_distinct_correct_is_not_promoted(tmp_path):
+    # Discriminator: a single distinct correct (even lapsed) is NOT mastery -> not promoted.
     now = 100 * DAY
-    items = [("a1", "A", 1, "1"), ("b1", "B", 1, "2")]
+    items = [("a1", "A", 1, "1"), ("b1", "B", 1, "2"), ("b2", "B", 2, "3")]
     client, session_db = _client(tmp_path, items, now=now)
     auth = _auth(client)
-    _seed(session_db, "ada", [("practice:ada", "B", "b1", "correct", now - 0.1 * DAY)])  # recent
+    _seed(session_db, "ada", [("practice:ada", "B", "b1", "correct", now - 5 * DAY)])  # 1 distinct
     problems = client.get("/practice/problems", headers=auth).json()["problems"]
-    assert problems[0]["id"] == "a1"  # nothing promoted -> easiest-first base (A band 1)
+    assert problems[0]["id"] == "a1" and all(p["review"] is False for p in problems)
+
+
+def test_same_problem_repeated_is_not_promoted(tmp_path):
+    # Discriminator: replaying ONE problem correctly twice -> distinct_count 1 -> not mastery.
+    # Positive control (2 DISTINCT problems DO promote) lives in
+    # test_lapsed_skill_is_promoted_to_front, with the same bank/timing — this would FAIL
+    # under a COUNT(*)>=2 (attempts) regression.
+    now = 100 * DAY
+    items = [("a1", "A", 1, "1"), ("b1", "B", 1, "2"), ("b2", "B", 2, "3")]
+    client, session_db = _client(tmp_path, items, now=now)
+    auth = _auth(client)
+    _seed(session_db, "ada", [
+        ("practice:ada", "B", "b1", "correct", now - 6 * DAY),
+        ("practice:ada", "B", "b1", "correct", now - 5 * DAY),  # same problem again
+    ])
+    problems = client.get("/practice/problems", headers=auth).json()["problems"]
+    assert problems[0]["id"] == "a1" and all(p["review"] is False for p in problems)
+
+
+def test_recently_mastered_skill_is_not_promoted(tmp_path):
+    now = 100 * DAY
+    items = [("a1", "A", 1, "1"), ("b1", "B", 1, "2"), ("b2", "B", 2, "3")]
+    client, session_db = _client(tmp_path, items, now=now)
+    auth = _auth(client)
+    # 2 DISTINCT corrects (passes the count gate) but RECENT -> recency keeps it not due.
+    _seed(session_db, "ada", [
+        ("practice:ada", "B", "b1", "correct", now - 0.2 * DAY),
+        ("practice:ada", "B", "b2", "correct", now - 0.1 * DAY),
+    ])
+    problems = client.get("/practice/problems", headers=auth).json()["problems"]
+    assert problems[0]["id"] == "a1"  # recent mastery -> not promoted -> easiest-first base
 
 
 def test_review_flag_marks_due_skill_problems(tmp_path):
@@ -202,7 +243,10 @@ def test_review_flag_marks_due_skill_problems(tmp_path):
     items = [("a1", "A", 1, "1"), ("b1", "B", 1, "2"), ("b2", "B", 2, "3")]
     client, session_db = _client(tmp_path, items, now=now)
     auth = _auth(client)
-    _seed(session_db, "ada", [("practice:ada", "B", "b1", "correct", now - 5 * DAY)])  # B lapsed
+    _seed(session_db, "ada", [
+        ("practice:ada", "B", "b1", "correct", now - 6 * DAY),
+        ("practice:ada", "B", "b2", "correct", now - 5 * DAY),
+    ])  # B mastered + lapsed
     problems = client.get("/practice/problems", headers=auth).json()["problems"]
     by_id = {p["id"]: p for p in problems}
     assert by_id["b1"]["review"] is True and by_id["b2"]["review"] is True  # due skill flagged
@@ -232,10 +276,14 @@ def test_review_flag_false_for_fresh_student(tmp_path):
 
 def test_per_student_isolation(tmp_path):
     now = 100 * DAY
-    items = [("a1", "A", 1, "1"), ("b1", "B", 1, "2")]
+    items = [("a1", "A", 1, "1"), ("b1", "B", 1, "2"), ("b2", "B", 2, "3")]
     client, session_db = _client(tmp_path, items, now=now)
     auth_ada = _auth(client, "ada")
-    _auth(client, "bob")
-    _seed(session_db, "ada", [("practice:ada", "B", "b1", "correct", now - 5 * DAY)])  # only ada's history
+    _seed(session_db, "ada", [
+        ("practice:ada", "B", "b1", "correct", now - 6 * DAY),
+        ("practice:ada", "B", "b2", "correct", now - 5 * DAY),
+    ])  # only ada has a mastered+lapsed skill
+    ada_problems = client.get("/practice/problems", headers=auth_ada).json()["problems"]
     bob_problems = client.get("/practice/problems", headers=_auth(client, "bob")).json()["problems"]
-    assert bob_problems[0]["id"] == "a1"  # bob unaffected by ada's due skill
+    assert ada_problems[0]["skill_id"] == "B"  # ada's due skill promoted
+    assert bob_problems[0]["id"] == "a1"  # bob unaffected by ada's history

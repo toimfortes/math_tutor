@@ -51,21 +51,23 @@ class SqliteAttemptLog:
         columns = [description[0] for description in cursor.description]
         return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
-    def last_correct_ts_by_skill(self, student_id: str) -> list[tuple[str, float]]:
-        """Latest correct-answer timestamp per skill for a student, CROSS-SESSION.
+    def mastery_by_skill(self, student_id: str) -> list[tuple[str, float, int]]:
+        """Per-skill mastery signals for a student, CROSS-SESSION: (skill_id, latest
+        correct ts, distinct correct problem count).
 
-        Keyed by `student_id` (not session_id), so mastery demonstrated anywhere —
-        the assessment loop or the practice pool — counts, matching the offline
-        `review_queue`. `MAX(ts)` is the time-defined reduction `review_due` expects
-        for `last_correct` (intentionally unlike the id-defined dedup in
-        `recent_decidable_by_problem`). Bounded output: one row per skill. Read-only.
+        Keyed by `student_id` (not session_id), so mastery demonstrated anywhere — the
+        assessment loop or the practice pool — counts, matching the offline `review_queue`.
+        `COUNT(DISTINCT problem_id)` is the mastery measure (replaying one problem cannot
+        qualify a skill); `MAX(ts)` is the time-defined recency `review_due` expects.
+        `ts`/`problem_id` are NOT NULL, so these agree with `review_due`'s set-based count.
+        Bounded output: one row per skill, ordered for determinism. Read-only.
         """
         cursor = self._conn.execute(
-            "SELECT skill_id, MAX(ts) FROM attempt_log "
-            "WHERE student_id = ? AND check_result = 'correct' GROUP BY skill_id",
+            "SELECT skill_id, MAX(ts), COUNT(DISTINCT problem_id) FROM attempt_log "
+            "WHERE student_id = ? AND check_result = 'correct' GROUP BY skill_id ORDER BY skill_id",
             (student_id,),
         )
-        return [(skill_id, ts) for skill_id, ts in cursor.fetchall()]
+        return [(skill_id, ts, count) for skill_id, ts, count in cursor.fetchall()]
 
     def recent_decidable_by_problem(self, session_id: str, *, limit: int) -> list[dict]:
         """Latest decidable attempt per problem — the most recent `limit` DISTINCT

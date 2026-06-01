@@ -704,9 +704,11 @@ def review_queue(
 ) -> dict[str, list[dict]]:
     """Offline spaced-review report from the attempt log (no hot-path change)."""
     with connect_content_db(session_db_path) as conn:
-        rows = conn.execute("SELECT student_id, skill_id, check_result, ts FROM attempt_log").fetchall()
+        rows = conn.execute(
+            "SELECT student_id, skill_id, problem_id, check_result, ts FROM attempt_log"
+        ).fetchall()
     due = review_due(
-        [(student_id, skill_id, result, ts) for student_id, skill_id, result, ts in rows],
+        [(student_id, skill_id, problem_id, result, ts) for student_id, skill_id, problem_id, result, ts in rows],
         now,
         interval_seconds=interval_seconds,
     )

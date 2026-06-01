@@ -62,6 +62,15 @@ get `now` injected; tests override it). Review scope is cross-session (mastery a
 counts); band-targeting stays practice-scoped (a deliberate asymmetry — retention timing
 vs practice-pool difficulty).
 
+## Mastery = N distinct correct problems
+Review eligibility requires **≥ `DEFAULT_MIN_CORRECTS` (2) distinct correct problems** in a
+skill, not a single correct — so a lucky/replayed item never triggers review. `review.py`
+exposes a pure core `due_from_mastery((skill, last_ts, distinct_count), now, *, min_corrects)`;
+`review_due` (multi-student raw rows, now `(student, skill, problem_id, result, ts)`) aggregates
+a set of distinct correct problem_ids and delegates to it — both default to the shared policy.
+`attempt_log.mastery_by_skill` provides `(skill, MAX(ts), COUNT(DISTINCT problem_id))`
+cross-session; the live path and offline `review_queue` share the one distinct-count policy.
+
 ## Calibration selection-bias guard
 Because practice exposure is now adaptive, `calibrate_difficulty` excludes the practice
 stream: `AND session_id NOT LIKE 'practice:%'` on the **outer** first-attempt query

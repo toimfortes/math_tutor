@@ -12,7 +12,7 @@ from backend.app.api_models import SkillStateModel, TurnResponseModel
 from backend.app.config import Settings
 from backend.app.content.practice_loader import load_practice_bank
 from backend.app.domain.practice_selection import order_for_student, target_band
-from backend.content_pipeline.review import DEFAULT_INTERVAL_SECONDS, review_due
+from backend.content_pipeline.review import due_from_mastery
 from backend.app.content.seed_loader import load_gold_problem_bank
 from backend.app.services.attempt_log import SqliteAttemptLog
 from backend.app.services.auth import (
@@ -222,13 +222,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         targets = {skill_id: target_band(history) for skill_id, history in per_skill.items()}
 
-        correct = attempt_log.last_correct_ts_by_skill(student_id)
-        due = review_due(
-            [(student_id, skill_id, "correct", ts) for skill_id, ts in correct],
-            now,
-            interval_seconds=DEFAULT_INTERVAL_SECONDS,
-        )
-        due_skills = [item.skill_id for item in due.get(student_id, [])]
+        mastery = attempt_log.mastery_by_skill(student_id)
+        due_skills = [item.skill_id for item in due_from_mastery(mastery, now)]
         ordered = order_for_student(problems, targets, due_skills)
         # Per-request annotation so the UI can badge review-due skills. Pure, derived
         # from due_skills; the dicts are request-private (public_problems rebuilds them).
