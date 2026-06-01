@@ -68,6 +68,38 @@ def _evaluate_prompt(params: dict) -> str:
     return f"For y = {params['m']}x + {params['b']}, find y when x = {params['x']}."
 
 
+def _y_intercept_params(index: int) -> dict:
+    return {"m": index + 2, "b": index + 1}
+
+
+def _y_intercept_prompt(params: dict) -> str:
+    return f"What is the y-intercept of y = {params['m']}x + {params['b']}?"
+
+
+def _interpret_params(index: int) -> dict:
+    return {"m": index + 2, "b": index + 1}
+
+
+def _interpret_prompt(params: dict) -> str:
+    return (
+        f"A quantity is modelled by y = {params['m']}x + {params['b']}. "
+        f"By how much does y change for each unit increase in x?"
+    )
+
+
+def _rate_params(index: int) -> dict:
+    rate = index + 3
+    x1, y1, x2 = 0, 10, 2
+    return {"x1": x1, "y1": y1, "x2": x2, "y2": y1 + rate * (x2 - x1)}
+
+
+def _rate_prompt(params: dict) -> str:
+    return (
+        f"A quantity is {params['y1']} at x = {params['x1']} and {params['y2']} at x = {params['x2']}. "
+        f"What is its constant rate of change per unit x?"
+    )
+
+
 _SLOPE_SCAFFOLD = {
     "max_safe_hint_level": 2,
     "level_0": "Find how much each coordinate changes between the two points.",
@@ -81,6 +113,30 @@ _EVALUATE_SCAFFOLD = {
     "level_0": "Substitute the given x value into the equation.",
     "level_1": "Multiply the slope by x, then add the intercept.",
     "level_2": "Compute m times x first, then add b.",
+    "level_3": None,
+}
+
+_Y_INTERCEPT_SCAFFOLD = {
+    "max_safe_hint_level": 2,
+    "level_0": "The y-intercept is the y-value when x = 0.",
+    "level_1": "In y = mx + b, the intercept is the constant term.",
+    "level_2": "Read off the value added after the x term.",
+    "level_3": None,
+}
+
+_INTERPRET_SCAFFOLD = {
+    "max_safe_hint_level": 2,
+    "level_0": "Think about what the coefficient of x represents.",
+    "level_1": "The rate of change is the slope of the line.",
+    "level_2": "In y = mx + b, y changes by m for each unit of x.",
+    "level_3": None,
+}
+
+_RATE_SCAFFOLD = {
+    "max_safe_hint_level": 2,
+    "level_0": "Compare how much the quantity changes against how much x changes.",
+    "level_1": "Rate of change is change in the quantity divided by change in x.",
+    "level_2": "Divide the difference in values by the difference in x.",
     "level_3": None,
 }
 
@@ -103,6 +159,33 @@ GENERATORS: dict[str, GeneratorSpec] = {
         make_params=_evaluate_params,
         make_prompt=_evaluate_prompt,
         hint_scaffold=_EVALUATE_SCAFFOLD,
+    ),
+    "lin_y_intercept": GeneratorSpec(
+        skill_id="lin_y_intercept",
+        kind="intercept_equation",
+        answer_type="numeric",
+        checker="numeric",
+        make_params=_y_intercept_params,
+        make_prompt=_y_intercept_prompt,
+        hint_scaffold=_Y_INTERCEPT_SCAFFOLD,
+    ),
+    "lin_interpret_meaning": GeneratorSpec(
+        skill_id="lin_interpret_meaning",
+        kind="interpret_slope",
+        answer_type="numeric",
+        checker="numeric",
+        make_params=_interpret_params,
+        make_prompt=_interpret_prompt,
+        hint_scaffold=_INTERPRET_SCAFFOLD,
+    ),
+    "lin_rate_of_change": GeneratorSpec(
+        skill_id="lin_rate_of_change",
+        kind="rate_between_points",
+        answer_type="numeric",
+        checker="numeric",
+        make_params=_rate_params,
+        make_prompt=_rate_prompt,
+        hint_scaffold=_RATE_SCAFFOLD,
     ),
 }
 
