@@ -14,11 +14,11 @@ def test_app_health_endpoint_boots():
     assert response.json() == {"status": "ok", "app": "Math Tutor Test"}
 
 
-def test_session_and_turn_endpoints_use_mocked_loop():
+def test_session_and_turn_endpoints_use_mocked_loop(login):
     app = create_app(Settings(app_name="Math Tutor Test"))
     client = TestClient(app)
 
-    start = client.post("/session/start", json={"student_id": "student-1", "theme": "space_logistics"})
+    start = client.post("/session/start", json={"theme": "space_logistics"}, headers=login(client, "student-1"))
     assert start.status_code == 200
     start_body = start.json()
     assert start_body["public_problem"]["prompt"]

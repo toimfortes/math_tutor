@@ -11,8 +11,14 @@ def _client():
     return TestClient(create_app(Settings.from_env({})))
 
 
+def _auth_headers(client, student="alice", password="pw"):
+    client.post("/auth/register", json={"student_id": student, "password": password})
+    token = client.post("/auth/login", json={"student_id": student, "password": password}).json()["auth_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
 def _start(client, student="alice", theme="neutral"):
-    body = client.post("/session/start", json={"student_id": student, "theme": theme}).json()
+    body = client.post("/session/start", json={"theme": theme}, headers=_auth_headers(client, student)).json()
     return body, {"Authorization": f"Bearer {body['token']}"}
 
 
@@ -51,7 +57,8 @@ def test_unknown_skill_returns_400_for_state_and_assessments():
 
 
 def test_unknown_theme_returns_400():
-    response = _client().post("/session/start", json={"student_id": "stu", "theme": "not-a-theme"})
+    client = _client()
+    response = client.post("/session/start", json={"theme": "not-a-theme"}, headers=_auth_headers(client))
 
     assert response.status_code == 400
     assert response.json()["detail"] == "unknown theme"
@@ -61,15 +68,15 @@ def test_empty_request_identifiers_return_422():
     client = _client()
     start, auth = _start(client, theme="space_logistics")
 
-    empty_student = client.post("/session/start", json={"student_id": " ", "theme": "neutral"})
-    empty_theme = client.post("/session/start", json={"student_id": "stu", "theme": " "})
+    empty_register = client.post("/auth/register", json={"student_id": " ", "password": "pw"})
+    empty_theme = client.post("/session/start", json={"theme": " "}, headers=_auth_headers(client, "themer"))
     empty_answer = client.post(
         "/turn",
         json={"session_id": start["session_id"], "idempotency_key": "k", "answer": " "},
         headers=auth,
     )
 
-    assert empty_student.status_code == 422
+    assert empty_register.status_code == 422
     assert empty_theme.status_code == 422
     assert empty_answer.status_code == 422
 
@@ -77,7 +84,9 @@ def test_empty_request_identifiers_return_422():
 def test_stale_write_returns_409(monkeypatch):
     app = create_app(Settings.from_env({}))
     client = TestClient(app)
-    start = client.post("/session/start", json={"student_id": "stu", "theme": "space_logistics"}).json()
+    start = client.post(
+        "/session/start", json={"theme": "space_logistics"}, headers=_auth_headers(client, "stu")
+    ).json()
     auth = {"Authorization": f"Bearer {start['token']}"}
 
     def boom(state):

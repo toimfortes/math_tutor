@@ -110,11 +110,13 @@ def test_turn_service_state_survives_a_fresh_service_on_the_same_db(tmp_path):
     assert again.public_problem.ref == first.public_problem.ref
 
 
-def test_app_persists_sessions_to_the_configured_sqlite_file(tmp_path):
+def test_app_persists_sessions_to_the_configured_sqlite_file(tmp_path, login):
     settings = Settings.from_env({"SESSION_DB_PATH": str(tmp_path / "app.db")})
 
     first_app = TestClient(create_app(settings))
-    start = first_app.post("/session/start", json={"student_id": "stu", "theme": "space_logistics"}).json()
+    start = first_app.post(
+        "/session/start", json={"theme": "space_logistics"}, headers=login(first_app, "stu")
+    ).json()
     session_id = start["session_id"]
     skill_id = start["public_problem"]["skill_id"]
     auth = {"Authorization": f"Bearer {start['token']}"}
@@ -133,11 +135,11 @@ def test_app_persists_sessions_to_the_configured_sqlite_file(tmp_path):
     assert state.json()["attempt_count"] >= 1
 
 
-def test_app_defaults_to_in_memory_store_without_a_db_path():
+def test_app_defaults_to_in_memory_store_without_a_db_path(login):
     settings = Settings.from_env({})
 
     client = TestClient(create_app(settings))
-    start = client.post("/session/start", json={"student_id": "stu", "theme": "neutral"}).json()
+    start = client.post("/session/start", json={"theme": "neutral"}, headers=login(client)).json()
 
     assert start["session_id"]
 

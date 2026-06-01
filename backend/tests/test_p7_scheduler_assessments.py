@@ -72,11 +72,13 @@ def test_retention_due_requires_two_day_delay():
     assert retention_is_due(last_correct_at=now - timedelta(days=1, hours=23), now=now) is False
 
 
-def test_p7_api_endpoints_expose_skip_transfer_retention_and_state():
+def test_p7_api_endpoints_expose_skip_transfer_retention_and_state(login):
     app = create_app()
     client = TestClient(app)
 
-    start = client.post("/session/start", json={"student_id": "student-1", "theme": "space_logistics"}).json()
+    start = client.post(
+        "/session/start", json={"theme": "space_logistics"}, headers=login(client, "student-1")
+    ).json()
     session_id = start["session_id"]
     skill_id = start["public_problem"]["skill_id"]
     auth = {"Authorization": f"Bearer {start['token']}"}

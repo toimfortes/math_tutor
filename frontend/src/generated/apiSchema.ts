@@ -288,8 +288,6 @@ export interface components {
         };
         /** StartSessionRequest */
         StartSessionRequest: {
-            /** Student Id */
-            student_id: string;
             /**
              * Theme
              * @default neutral
@@ -557,7 +555,9 @@ export interface operations {
     start_session_session_start_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };

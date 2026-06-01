@@ -76,3 +76,16 @@ def test_register_and_login_endpoints():
 
     bad = client.post("/auth/login", json={"student_id": "alice", "password": "nope"})
     assert bad.status_code == 401
+
+
+def test_start_session_requires_authentication(login):
+    client = TestClient(create_app(Settings.from_env({})))
+
+    # without an auth token the session cannot be created
+    assert client.post("/session/start", json={"theme": "neutral"}).status_code == 401
+
+    # with a valid auth token the session is created and the student is derived from it
+    started = client.post("/session/start", json={"theme": "neutral"}, headers=login(client, "alice"))
+    assert started.status_code == 200
+    assert started.json()["token"]
+

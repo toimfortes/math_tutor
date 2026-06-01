@@ -15,6 +15,12 @@ def _bearer(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
+def _start(client, student: str, theme: str = "neutral") -> dict:
+    client.post("/auth/register", json={"student_id": student, "password": "pw"})
+    auth = client.post("/auth/login", json={"student_id": student, "password": "pw"}).json()["auth_token"]
+    return client.post("/session/start", json={"theme": theme}, headers=_bearer(auth)).json()
+
+
 # --- token store ---------------------------------------------------------
 
 def test_token_store_roundtrip():
@@ -44,13 +50,13 @@ def test_sqlite_token_store_is_durable(tmp_path):
 # --- API contract --------------------------------------------------------
 
 def test_start_session_returns_a_token():
-    body = _client().post("/session/start", json={"student_id": "stu", "theme": "neutral"}).json()
+    body = _start(_client(), "stu")
     assert body["token"]
 
 
 def test_turn_requires_a_bearer_token():
     client = _client()
-    start = client.post("/session/start", json={"student_id": "stu", "theme": "space_logistics"}).json()
+    start = _start(client, "stu", "space_logistics")
     payload = {"session_id": start["session_id"], "idempotency_key": "t1", "answer": "(4, 3)"}
 
     assert client.post("/turn", json=payload).status_code == 401
@@ -59,7 +65,7 @@ def test_turn_requires_a_bearer_token():
 
 def test_forged_token_is_rejected():
     client = _client()
-    start = client.post("/session/start", json={"student_id": "stu", "theme": "neutral"}).json()
+    start = _start(client, "stu")
     payload = {"session_id": start["session_id"], "idempotency_key": "t1", "answer": "1"}
 
     assert client.post("/turn", json=payload, headers=_bearer("not-a-real-token")).status_code == 401
@@ -67,8 +73,8 @@ def test_forged_token_is_rejected():
 
 def test_token_cannot_drive_another_students_session():
     client = _client()
-    alice = client.post("/session/start", json={"student_id": "alice", "theme": "neutral"}).json()
-    bob = client.post("/session/start", json={"student_id": "bob", "theme": "neutral"}).json()
+    alice = _start(client, "alice")
+    bob = _start(client, "bob")
 
     # alice's token used against bob's session
     response = client.post(
@@ -81,7 +87,7 @@ def test_token_cannot_drive_another_students_session():
 
 def test_student_state_requires_token_and_matching_owner():
     client = _client()
-    start = client.post("/session/start", json={"student_id": "alice", "theme": "neutral"}).json()
+    start = _start(client, "alice")
     sid, skill, token = start["session_id"], start["public_problem"]["skill_id"], start["token"]
     params = {"session_id": sid, "skill_id": skill}
 

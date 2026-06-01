@@ -38,7 +38,6 @@ NonEmptyStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length
 
 
 class StartSessionRequest(BaseModel):
-    student_id: NonEmptyStr
     theme: NonEmptyStr = "neutral"
 
 
@@ -132,6 +131,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if limiter is not None and not limiter.allow(key):
             raise HTTPException(status_code=429, detail="rate limit exceeded")
 
+    def require_auth_token(authorization: str | None = Header(default=None)) -> str:
+        if not authorization or not authorization.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="missing bearer token")
+        student_id = auth_service.resolve(authorization.removeprefix("Bearer ").strip())
+        if student_id is None:
+            raise HTTPException(status_code=401, detail="invalid token")
+        return student_id
+
     def require_token(authorization: str | None = Header(default=None)) -> TokenRecord:
         if not authorization or not authorization.startswith("Bearer "):
             raise HTTPException(status_code=401, detail="missing bearer token")
@@ -158,11 +165,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"auth_token": auth_service.login(student_id=request.student_id, password=request.password)}
 
     @app.post("/session/start", response_model=TurnResponseModel)
-    def start_session(request: StartSessionRequest) -> dict:
-        _enforce_rate_limit(f"start:{request.student_id}")
-        response = turn_service.start_session(student_id=request.student_id, theme=request.theme)
+    def start_session(request: StartSessionRequest, student_id: str = Depends(require_auth_token)) -> dict:
+        _enforce_rate_limit(f"start:{student_id}")
+        response = turn_service.start_session(student_id=student_id, theme=request.theme)
         payload = _turn_response_to_dict(response)
-        payload["token"] = token_store.issue(session_id=response.session_id, student_id=request.student_id)
+        payload["token"] = token_store.issue(session_id=response.session_id, student_id=student_id)
         return payload
 
     @app.post("/turn", response_model=TurnResponseModel)
