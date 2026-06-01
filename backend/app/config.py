@@ -12,6 +12,7 @@ class Settings:
     session_db_path: str | None = None
     rate_limit_per_minute: int | None = None
     daily_llm_budget: int | None = None
+    practice_bank_path: str | None = None
     llm_provider: str = "mock"
     anthropic_api_key: str | None = None
     anthropic_api_url: str = "https://api.anthropic.com/v1/messages"
@@ -39,6 +40,7 @@ class Settings:
             session_db_path=source.get("SESSION_DB_PATH"),
             rate_limit_per_minute=_optional_int_from_env(source, "RATE_LIMIT_PER_MINUTE"),
             daily_llm_budget=_optional_int_from_env(source, "DAILY_LLM_BUDGET"),
+            practice_bank_path=source.get("PRACTICE_BANK_PATH"),
             llm_provider=source.get("LLM_PROVIDER", cls.llm_provider).lower(),
             anthropic_api_key=source.get("ANTHROPIC_API_KEY"),
             anthropic_api_url=source.get("ANTHROPIC_API_URL", cls.anthropic_api_url),

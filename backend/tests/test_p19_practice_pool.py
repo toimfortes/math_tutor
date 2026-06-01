@@ -1,0 +1,89 @@
+from __future__ import annotations
+
+from fastapi.testclient import TestClient
+
+from backend.app.config import Settings
+from backend.app.content.seed_loader import DEFAULT_GOLD_PATH
+from backend.app.main import create_app
+from backend.content_pipeline.ingest import (
+    DeploymentMode,
+    DEFAULT_OER_MANIFEST_PATH,
+    export_practice_bank,
+    generate_candidates,
+    ingest_gold_bank,
+    ingest_oer_manifest,
+    promote_candidates,
+)
+
+
+def _practice_bank(tmp_path):
+    db_path = tmp_path / "content.sqlite3"
+    ingest_gold_bank(DEFAULT_GOLD_PATH, db_path, deployment_mode=DeploymentMode.FREE_NONCOMMERCIAL)
+    ingest_oer_manifest(DEFAULT_OER_MANIFEST_PATH, db_path, deployment_mode=DeploymentMode.FREE_NONCOMMERCIAL)
+    generate_candidates(db_path, per_skill=3)
+    promote_candidates(db_path, promoted_at="2026-06-01T00:00:00Z")
+    practice_path = tmp_path / "practice.json"
+    export_practice_bank(db_path, practice_path)
+    return practice_path
+
+
+def _auth(client, student="ada"):
+    client.post("/auth/register", json={"student_id": student, "password": "pw"})
+    token = client.post("/auth/login", json={"student_id": student, "password": "pw"}).json()["auth_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+def test_practice_problems_are_served_without_answers(tmp_path):
+    settings = Settings.from_env({"PRACTICE_BANK_PATH": str(_practice_bank(tmp_path))})
+    client = TestClient(create_app(settings))
+    auth = _auth(client)
+
+    response = client.get("/practice/problems", headers=auth)
+
+    assert response.status_code == 200
+    problems = response.json()["problems"]
+    assert len(problems) > 0
+    sample = problems[0]
+    assert set(sample) >= {"id", "skill_id", "prompt", "answer_type", "hint_scaffold"}
+    assert "canonical_answer" not in sample  # answers are never served
+
+
+def test_practice_check_grades_with_the_code_owned_checker(tmp_path):
+    practice_path = _practice_bank(tmp_path)
+    settings = Settings.from_env({"PRACTICE_BANK_PATH": str(practice_path)})
+    client = TestClient(create_app(settings))
+    auth = _auth(client)
+
+    problems = client.get("/practice/problems", headers=auth).json()["problems"]
+    # find the canonical answer from the exported artifact for one problem
+    import json
+
+    bank = json.loads(practice_path.read_text())
+    answers = {p["id"]: p["neutral"]["canonical_answer"] for p in bank["problems"]}
+    target = problems[0]
+
+    correct = client.post(
+        "/practice/check", json={"problem_id": target["id"], "answer": answers[target["id"]]}, headers=auth
+    )
+    wrong = client.post(
+        "/practice/check", json={"problem_id": target["id"], "answer": "999999"}, headers=auth
+    )
+
+    assert correct.status_code == 200 and correct.json()["check_result"] == "correct"
+    assert wrong.json()["check_result"] != "correct"
+
+
+def test_practice_endpoints_require_auth_and_handle_unknown_problem(tmp_path):
+    settings = Settings.from_env({"PRACTICE_BANK_PATH": str(_practice_bank(tmp_path))})
+    client = TestClient(create_app(settings))
+
+    assert client.get("/practice/problems").status_code == 401  # no token
+    auth = _auth(client)
+    assert client.post("/practice/check", json={"problem_id": "nope", "answer": "1"}, headers=auth).status_code == 404
+
+
+def test_practice_pool_is_empty_when_unconfigured():
+    client = TestClient(create_app(Settings.from_env({})))
+    auth = _auth(client)
+
+    assert client.get("/practice/problems", headers=auth).json()["problems"] == []

@@ -8,6 +8,7 @@ from pydantic import BaseModel, StringConstraints
 
 from backend.app.api_models import SkillStateModel, TurnResponseModel
 from backend.app.config import Settings
+from backend.app.content.practice_loader import load_practice_bank
 from backend.app.content.seed_loader import load_gold_problem_bank
 from backend.app.services.attempt_log import SqliteAttemptLog
 from backend.app.services.auth import (
@@ -63,6 +64,11 @@ class CredentialsRequest(BaseModel):
     password: NonEmptyStr
 
 
+class PracticeCheckRequest(BaseModel):
+    problem_id: NonEmptyStr
+    answer: NonEmptyStr
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     active_settings = settings or Settings.from_env()
     app = FastAPI(title=active_settings.app_name)
@@ -113,6 +119,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if active_settings.session_db_path
         else InMemoryAuthStore()
     )
+    practice_bank = load_practice_bank(active_settings.practice_bank_path) if active_settings.practice_bank_path else None
     turn_service = TurnService(
         problem_bank=problem_bank,
         llm_client=_build_llm_client(active_settings),
@@ -163,6 +170,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/auth/login")
     def login(request: CredentialsRequest) -> dict:
         return {"auth_token": auth_service.login(student_id=request.student_id, password=request.password)}
+
+    @app.get("/practice/problems")
+    def practice_problems(student_id: str = Depends(require_auth_token)) -> dict:
+        # Separate 'extra practice' pool of approved-generated content, distinct
+        # from the gold assessment loop. Public fields only (no answers).
+        return {"problems": practice_bank.public_problems() if practice_bank is not None else []}
+
+    @app.post("/practice/check")
+    def practice_check(request: PracticeCheckRequest, student_id: str = Depends(require_auth_token)) -> dict:
+        result = practice_bank.grade(request.problem_id, request.answer) if practice_bank is not None else None
+        if result is None:
+            raise HTTPException(status_code=404, detail="practice problem not found")
+        return {"check_result": result}
 
     @app.post("/session/start", response_model=TurnResponseModel)
     def start_session(request: StartSessionRequest, student_id: str = Depends(require_auth_token)) -> dict:
