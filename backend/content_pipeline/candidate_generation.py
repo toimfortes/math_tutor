@@ -111,6 +111,17 @@ def _equation_prompt(params: dict) -> str:
     )
 
 
+def _slope_from_graph_params(index: int) -> dict:
+    return {"rise": index + 3, "run": 2}
+
+
+def _slope_from_graph_prompt(params: dict) -> str:
+    return (
+        f"A line on a graph rises {params['rise']} units for every {params['run']} units it moves "
+        f"to the right. What is its slope? Give an exact value."
+    )
+
+
 _SLOPE_SCAFFOLD = {
     "max_safe_hint_level": 2,
     "level_0": "Find how much each coordinate changes between the two points.",
@@ -156,6 +167,14 @@ _EQUATION_SCAFFOLD = {
     "level_0": "Slope-intercept form is y = mx + b.",
     "level_1": "Put the slope in the m position and the intercept in the b position.",
     "level_2": "Write y = (slope)x + (intercept) with the given numbers.",
+    "level_3": None,
+}
+
+_SLOPE_FROM_GRAPH_SCAFFOLD = {
+    "max_safe_hint_level": 2,
+    "level_0": "Find the rise and the run from the description.",
+    "level_1": "Slope is rise divided by run.",
+    "level_2": "Write the vertical change over the horizontal change, keeping the exact fraction.",
     "level_3": None,
 }
 
@@ -214,6 +233,15 @@ GENERATORS: dict[str, GeneratorSpec] = {
         make_params=_equation_params,
         make_prompt=_equation_prompt,
         hint_scaffold=_EQUATION_SCAFFOLD,
+    ),
+    "lin_slope_from_graph": GeneratorSpec(
+        skill_id="lin_slope_from_graph",
+        kind="rise_run",
+        answer_type="numeric",
+        checker="numeric",
+        make_params=_slope_from_graph_params,
+        make_prompt=_slope_from_graph_prompt,
+        hint_scaffold=_SLOPE_FROM_GRAPH_SCAFFOLD,
     ),
 }
 
