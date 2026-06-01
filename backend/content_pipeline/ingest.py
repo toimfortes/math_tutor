@@ -3,13 +3,18 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 from enum import StrEnum
+import hashlib
 import json
 from pathlib import Path
 import sqlite3
 from typing import Any
 
 from backend.app.content.seed_loader import DEFAULT_GOLD_PATH, RealizedProblemRef
-from backend.content_pipeline.candidate_generation import GENERATORS, generate_validated_candidates
+from backend.content_pipeline.candidate_generation import (
+    GENERATORS,
+    generate_validated_candidates,
+    validate_stored_candidate,
+)
 from backend.content_pipeline.provenance import build_promotion_manifest
 from backend.content_pipeline.templates.linear_functions import LINEAR_FUNCTION_TEMPLATE_CASES, LinearTemplateCase
 
@@ -50,6 +55,15 @@ class CandidateGenerationSummary:
     per_skill: int
     created_by_skill: dict[str, int]
     total_created: int
+
+
+@dataclass(frozen=True)
+class PromotionSummary:
+    db_path: str
+    promotion_id: str
+    promoted: int
+    rejected: int
+    verifier_ok: bool
 
 
 PROBLEM_LEVEL_REALIZATION = "__problem__"
@@ -429,6 +443,101 @@ def generate_candidates(
         per_skill=per_skill,
         created_by_skill=created,
         total_created=sum(created.values()),
+    )
+
+
+def promote_candidates(
+    db_path: Path | str = Path("content.sqlite3"),
+    *,
+    skill_id: str | None = None,
+    limit: int | None = None,
+    promoted_by: str = "promote_candidates",
+    promoted_at: str = "1970-01-01T00:00:00Z",
+) -> PromotionSummary:
+    """Approve generated candidates after re-verifying them, in the DB only.
+
+    Each selected candidate is re-validated through the generated-content gates
+    (deterministic solver result, checker round-trip, safety, no leak). Passing
+    candidates move curation_status 'candidate' -> 'approved' and a
+    content_promotion audit row is written. This does NOT touch the runtime gold
+    bank: export-gold still emits only 'promoted' (authored gold) problems, and
+    nothing here changes what learners are served.
+    """
+    db_path = Path(db_path)
+    with connect_content_db(db_path) as conn:
+        conn.executescript(SCHEMA)
+        conn.row_factory = sqlite3.Row
+
+        query = (
+            "SELECT pi.id AS id, pi.skill_id AS skill_id, pi.answer_type AS answer_type, "
+            "t.template_kind AS kind, pr.prompt AS prompt, pr.canonical_answer AS canonical_answer, "
+            "pr.param_values AS param_values "
+            "FROM problem_item pi "
+            "JOIN template t ON t.id = pi.template_id "
+            "JOIN problem_realization pr ON pr.problem_item_id = pi.id AND pr.realization_key = 'neutral' "
+            "WHERE pi.curation_status = 'candidate'"
+        )
+        params: list[Any] = []
+        if skill_id is not None:
+            query += " AND pi.skill_id = ?"
+            params.append(skill_id)
+        query += " ORDER BY pi.order_index"
+        if limit is not None:
+            query += " LIMIT ?"
+            params.append(limit)
+
+        rows = conn.execute(query, params).fetchall()
+        promoted_ids: list[str] = []
+        rejected = 0
+        for row in rows:
+            errors = validate_stored_candidate(
+                skill_id=row["skill_id"],
+                kind=row["kind"],
+                answer_type=row["answer_type"],
+                params=json.loads(row["param_values"]),
+                prompt=row["prompt"],
+                canonical_answer=row["canonical_answer"],
+            )
+            if errors:
+                rejected += 1
+                continue
+            conn.execute("UPDATE problem_item SET curation_status = 'approved' WHERE id = ?", (row["id"],))
+            promoted_ids.append(row["id"])
+
+        verifier_ok = rejected == 0
+        fingerprint = "\n".join(sorted(promoted_ids))
+        promotion_index = conn.execute("SELECT COUNT(*) FROM content_promotion").fetchone()[0]
+        promotion_id = f"generated_promotion:{promotion_index}"
+        report = {
+            "kind": "generated_candidates",
+            "promoted": len(promoted_ids),
+            "rejected": rejected,
+            "skill_id": skill_id,
+            "promoted_ids": promoted_ids,
+        }
+        conn.execute(
+            "INSERT INTO content_promotion VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                promotion_id,
+                hashlib.sha256(fingerprint.encode("utf-8")).hexdigest(),
+                promoted_at,
+                promoted_by,
+                0,
+                len(promoted_ids),
+                len(promoted_ids),
+                1 if verifier_ok else 0,
+                _to_json(report),
+                "[]",
+            ),
+        )
+        conn.commit()
+
+    return PromotionSummary(
+        db_path=str(db_path),
+        promotion_id=promotion_id,
+        promoted=len(promoted_ids),
+        rejected=rejected,
+        verifier_ok=verifier_ok,
     )
 
 
@@ -941,6 +1050,13 @@ def main(argv: list[str] | None = None) -> None:
     candidates_parser.add_argument("--db", type=Path, required=True)
     candidates_parser.add_argument("--per-skill", type=int, default=5)
 
+    promote_parser = subparsers.add_parser(
+        "promote", help="Re-verify and approve generated candidates (DB only; not exported to the runtime bank)."
+    )
+    promote_parser.add_argument("--db", type=Path, required=True)
+    promote_parser.add_argument("--skill", type=str, default=None)
+    promote_parser.add_argument("--limit", type=int, default=None)
+
     args = parser.parse_args(argv)
     if args.command == "gold":
         summary = ingest_gold_bank(args.input, args.db, deployment_mode=args.deployment_mode, replace=args.replace)
@@ -961,6 +1077,18 @@ def main(argv: list[str] | None = None) -> None:
         return
     if args.command == "generate-candidates":
         summary = generate_candidates(args.db, per_skill=args.per_skill)
+        print(json.dumps(summary.__dict__, indent=2, sort_keys=True))
+        return
+    if args.command == "promote":
+        from datetime import UTC, datetime
+
+        summary = promote_candidates(
+            args.db,
+            skill_id=args.skill,
+            limit=args.limit,
+            promoted_by="cli_promote",
+            promoted_at=datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        )
         print(json.dumps(summary.__dict__, indent=2, sort_keys=True))
 
 

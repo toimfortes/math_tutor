@@ -247,6 +247,29 @@ def validate_candidate(candidate: GeneratedCandidate) -> list[str]:
     return errors
 
 
+def validate_stored_candidate(
+    *, skill_id: str, kind: str, answer_type: str, params: dict, prompt: str, canonical_answer: str
+) -> list[str]:
+    """Re-run the gates against a candidate already persisted in the DB.
+
+    Used at promotion time to re-verify a stored candidate (re-derive its answer
+    from params, re-check safety and leak) before it is approved.
+    """
+    return validate_candidate(
+        GeneratedCandidate(
+            skill_id=skill_id,
+            kind=kind,
+            answer_type=answer_type,
+            checker="",
+            params=params,
+            prompt=prompt,
+            canonical_answer=canonical_answer,
+            known_wrong={},
+            hint_scaffold={},
+        )
+    )
+
+
 def generate_validated_candidates(skill_id: str, count: int) -> list[GeneratedCandidate]:
     candidates: list[GeneratedCandidate] = []
     index = 0

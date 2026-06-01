@@ -13,8 +13,75 @@ from backend.content_pipeline.ingest import (
     ingest_oer_manifest,
     ingest_gold_bank,
     is_license_allowed,
+    promote_candidates,
 )
 from backend.content_pipeline.verify import verify_frozen_gold_bank
+
+
+def _staged_db(tmp_path, per_skill=5):
+    db_path = tmp_path / "content.sqlite3"
+    ingest_gold_bank(DEFAULT_GOLD_PATH, db_path, deployment_mode=DeploymentMode.FREE_NONCOMMERCIAL)
+    ingest_oer_manifest(DEFAULT_OER_MANIFEST_PATH, db_path, deployment_mode=DeploymentMode.FREE_NONCOMMERCIAL)
+    generate_candidates(db_path, per_skill=per_skill)
+    return db_path
+
+
+def test_promote_approves_candidates_but_keeps_runtime_bank_frozen(tmp_path):
+    db_path = _staged_db(tmp_path)
+    export_path = tmp_path / "linear_functions.exported.json"
+
+    summary = promote_candidates(db_path, promoted_at="2026-06-01T00:00:00Z")
+
+    assert summary.promoted > 0
+    assert summary.rejected == 0
+    assert summary.verifier_ok is True
+
+    with connect_content_db(db_path) as conn:
+        statuses = dict(conn.execute("SELECT curation_status, COUNT(*) FROM problem_item GROUP BY curation_status").fetchall())
+        assert statuses["promoted"] == 16  # authored gold, untouched
+        assert statuses["approved"] == summary.promoted
+        assert "candidate" not in statuses  # all candidates were approved
+        assert conn.execute("SELECT COUNT(*) FROM content_promotion").fetchone()[0] == 2  # gold + this one
+
+    # the runtime export still excludes approved-generated content and verifies
+    export_gold_bank(db_path, export_path)
+    assert len(json.loads(export_path.read_text())["problems"]) == 16
+    assert verify_frozen_gold_bank(export_path).ok is True
+
+
+def test_promote_can_target_a_single_skill(tmp_path):
+    db_path = _staged_db(tmp_path)
+
+    summary = promote_candidates(db_path, skill_id="lin_evaluate", promoted_at="2026-06-01T00:00:00Z")
+
+    with connect_content_db(db_path) as conn:
+        approved_skills = {row[0] for row in conn.execute("SELECT DISTINCT skill_id FROM problem_item WHERE curation_status = 'approved'")}
+        assert approved_skills == {"lin_evaluate"}
+        remaining = conn.execute("SELECT COUNT(*) FROM problem_item WHERE curation_status = 'candidate'").fetchone()[0]
+        assert remaining > 0  # other skills' candidates were left untouched
+    assert summary.promoted == 5
+
+
+def test_promotion_re_verifies_and_rejects_a_tampered_candidate(tmp_path):
+    db_path = _staged_db(tmp_path)
+    with connect_content_db(db_path) as conn:
+        target = conn.execute(
+            "SELECT problem_item_id FROM problem_realization pr "
+            "JOIN problem_item pi ON pi.id = pr.problem_item_id WHERE pi.curation_status = 'candidate' LIMIT 1"
+        ).fetchone()[0]
+        # corrupt the stored answer so it no longer matches the deterministic solver
+        conn.execute(
+            "UPDATE problem_realization SET canonical_answer = 'tampered' WHERE problem_item_id = ?", (target,)
+        )
+        conn.commit()
+
+    summary = promote_candidates(db_path, promoted_at="2026-06-01T00:00:00Z")
+
+    assert summary.rejected >= 1
+    assert summary.verifier_ok is False
+    with connect_content_db(db_path) as conn:
+        status = conn.execute("SELECT curation_status FROM problem_item WHERE id = ?", (target,)).fetchone()[0]
+        assert status == "candidate"  # the tampered candidate was not approved
 
 
 def test_generate_candidates_stages_gated_problems_without_promoting_them(tmp_path):
