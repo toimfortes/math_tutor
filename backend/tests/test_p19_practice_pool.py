@@ -87,3 +87,38 @@ def test_practice_pool_is_empty_when_unconfigured():
     auth = _auth(client)
 
     assert client.get("/practice/problems", headers=auth).json()["problems"] == []
+
+
+def test_practice_check_emits_a_structured_log(tmp_path, caplog):
+    import logging
+
+    settings = Settings.from_env({"PRACTICE_BANK_PATH": str(_practice_bank(tmp_path))})
+    client = TestClient(create_app(settings))
+    auth = _auth(client)
+    target = client.get("/practice/problems", headers=auth).json()["problems"][0]
+
+    with caplog.at_level(logging.INFO, logger="math_tutor.practice"):
+        client.post("/practice/check", json={"problem_id": target["id"], "answer": "999"}, headers=auth)
+
+    record = next(r for r in caplog.records if r.msg == "practice_checked")
+    assert record.problem_id == target["id"]
+    assert record.skill_id == target["skill_id"]
+    assert record.check_result in {"correct", "incorrect", "undecidable"}
+
+
+def test_practice_attempts_are_persisted_to_the_attempt_log(tmp_path):
+    import sqlite3
+
+    practice_path = _practice_bank(tmp_path)
+    session_db = tmp_path / "session.db"
+    settings = Settings.from_env({"PRACTICE_BANK_PATH": str(practice_path), "SESSION_DB_PATH": str(session_db)})
+    client = TestClient(create_app(settings))
+    auth = _auth(client)
+    target = client.get("/practice/problems", headers=auth).json()["problems"][0]
+
+    client.post("/practice/check", json={"problem_id": target["id"], "answer": "999"}, headers=auth)
+
+    rows = sqlite3.connect(str(session_db)).execute(
+        "SELECT session_id, problem_id, check_result FROM attempt_log"
+    ).fetchall()
+    assert any(row[1] == target["id"] and row[0].startswith("practice:") for row in rows)

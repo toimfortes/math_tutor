@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
@@ -36,6 +37,8 @@ from backend.app.services.turn import (
 
 
 NonEmptyStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+practice_logger = logging.getLogger("math_tutor.practice")
 
 
 class StartSessionRequest(BaseModel):
@@ -179,9 +182,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/practice/check")
     def practice_check(request: PracticeCheckRequest, student_id: str = Depends(require_auth_token)) -> dict:
-        result = practice_bank.grade(request.problem_id, request.answer) if practice_bank is not None else None
-        if result is None:
+        problem = practice_bank.get(request.problem_id) if practice_bank is not None else None
+        if problem is None:
             raise HTTPException(status_code=404, detail="practice problem not found")
+        result = practice_bank.grade(request.problem_id, request.answer)
+        if attempt_log is not None:
+            attempt_log.record(
+                session_id=f"practice:{student_id}",
+                student_id=student_id,
+                skill_id=problem.skill_id,
+                problem_id=problem.id,
+                check_result=result,
+                xp_awarded=0,
+            )
+        practice_logger.info(
+            "practice_checked",
+            extra={
+                "student_id": student_id,
+                "problem_id": problem.id,
+                "skill_id": problem.skill_id,
+                "check_result": result,
+            },
+        )
         return {"check_result": result}
 
     @app.post("/session/start", response_model=TurnResponseModel)
