@@ -51,6 +51,22 @@ class SqliteAttemptLog:
         columns = [description[0] for description in cursor.description]
         return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
+    def last_correct_ts_by_skill(self, student_id: str) -> list[tuple[str, float]]:
+        """Latest correct-answer timestamp per skill for a student, CROSS-SESSION.
+
+        Keyed by `student_id` (not session_id), so mastery demonstrated anywhere —
+        the assessment loop or the practice pool — counts, matching the offline
+        `review_queue`. `MAX(ts)` is the time-defined reduction `review_due` expects
+        for `last_correct` (intentionally unlike the id-defined dedup in
+        `recent_decidable_by_problem`). Bounded output: one row per skill. Read-only.
+        """
+        cursor = self._conn.execute(
+            "SELECT skill_id, MAX(ts) FROM attempt_log "
+            "WHERE student_id = ? AND check_result = 'correct' GROUP BY skill_id",
+            (student_id,),
+        )
+        return [(skill_id, ts) for skill_id, ts in cursor.fetchall()]
+
     def recent_decidable_by_problem(self, session_id: str, *, limit: int) -> list[dict]:
         """Latest decidable attempt per problem — the most recent `limit` DISTINCT
         problems, in chronological (ascending id) order.

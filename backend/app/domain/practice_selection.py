@@ -18,9 +18,10 @@ Two pieces:
 
 from __future__ import annotations
 
-from typing import Iterable
+from typing import Iterable, Sequence
 
 SEED_BAND = 2  # ~62% cold-start seed (Rasch CAT); used only when a skill has no history
+REVIEW_QUOTA = 2  # review items promoted per due skill (capped so no skill monopolizes)
 RAISE_THRESHOLD = 0.80  # >= this recent accuracy steps the target up (4/5 reaches it)
 LOWER_THRESHOLD = 0.50  # <= this steps the target down
 WINDOW = 5  # recent decidable attempts considered; movement only when window is full
@@ -68,16 +69,30 @@ def target_band(recent: list[tuple[int, bool]], *, seed_band: int = SEED_BAND) -
     return _clamp_band(anchor)
 
 
-def order_for_student(problems: Iterable[dict], targets: dict[str, int]) -> list[dict]:
-    """Reorder the practice list, target-first WITHIN each skill — slot-preserving.
+def order_for_student(
+    problems: Iterable[dict],
+    targets: dict[str, int],
+    due_skills: Sequence[str] = (),
+    review_quota: int = REVIEW_QUOTA,
+) -> list[dict]:
+    """Reorder the practice list: review-due skills first, else band-targeted.
 
-    A skill that has a target has ITS problems reordered by distance from the target
-    band (then easier band, then id), but only **within the global slots that skill
-    already occupies** in the input. Skills without a target are left byte-identical
-    to the input — their problems do not move at all. So the cross-skill layout is
-    exactly preserved, and an untouched skill looks identical whether or not other
-    skills have history (no fresh-vs-active discontinuity). Pure; the id tiebreak
-    makes each per-skill reorder a total order, so output is input-order-independent.
+    Two tiers, in priority order:
+
+    1. **Band targeting (base, slot-preserving).** A skill with a target has its
+       problems reordered by distance from the target band (then easier band, then id)
+       only **within the global slots it already occupies**; skills without a target
+       are left byte-identical. So the cross-skill layout is preserved and an untouched
+       skill looks the same regardless of other skills' history.
+    2. **Review-due promotion (on top).** For each skill in `due_skills` (already
+       most-overdue-first), the first `review_quota` of its problems — taken in base
+       (band-targeted) order — are round-robin interleaved at the FRONT; the remainder
+       stay in base order. This intentionally supersedes slot-preservation for promoted
+       skills (review is the gating tier), interleaves rather than masses review items,
+       and caps promotion so a perpetually-due skill cannot monopolize the list.
+
+    Pure and deterministic given `(problems, targets, due_skills)`. NOT globally
+    input-order-invariant (the base is slot-preserving for untouched skills).
     """
     result = list(problems)
     slots: dict[str, list[int]] = {}
@@ -92,4 +107,18 @@ def order_for_student(problems: Iterable[dict], targets: dict[str, int]) -> list
         members.sort(key=lambda p: (abs(p["difficulty"] - target), p["difficulty"], p["id"]))
         for slot, member in zip(indices, members):
             result[slot] = member
-    return result
+
+    if not due_skills:
+        return result
+
+    due_groups = {skill_id: [p for p in result if p["skill_id"] == skill_id] for skill_id in due_skills}
+    promoted: list[dict] = []
+    seen: set[str] = set()
+    for i in range(review_quota):
+        for skill_id in due_skills:
+            group = due_groups[skill_id]
+            if i < len(group):
+                promoted.append(group[i])
+                seen.add(group[i]["id"])
+    rest = [p for p in result if p["id"] not in seen]
+    return promoted + rest

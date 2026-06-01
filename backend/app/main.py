@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
@@ -11,6 +12,7 @@ from backend.app.api_models import SkillStateModel, TurnResponseModel
 from backend.app.config import Settings
 from backend.app.content.practice_loader import load_practice_bank
 from backend.app.domain.practice_selection import order_for_student, target_band
+from backend.content_pipeline.review import DEFAULT_INTERVAL_SECONDS, review_due
 from backend.app.content.seed_loader import load_gold_problem_bank
 from backend.app.services.attempt_log import SqliteAttemptLog
 from backend.app.services.auth import (
@@ -77,6 +79,13 @@ class PracticeCheckRequest(BaseModel):
 # problem_id in SQL first, so this caps the number of DISTINCT recent problems
 # considered — comfortably above WINDOW x expected skill count.
 PRACTICE_HISTORY_READ_CAP = 200
+
+
+def get_clock() -> float:
+    """Wall-clock at the request boundary. A FastAPI dependency so the live path's
+    only clock access is here (pure selection/review modules receive `now` injected)
+    and endpoint tests can override it deterministically."""
+    return time.time()
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -182,7 +191,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"auth_token": auth_service.login(student_id=request.student_id, password=request.password)}
 
     @app.get("/practice/problems")
-    def practice_problems(student_id: str = Depends(require_auth_token)) -> dict:
+    def practice_problems(
+        student_id: str = Depends(require_auth_token), now: float = Depends(get_clock)
+    ) -> dict:
         # Separate 'extra practice' pool of approved-generated content, distinct
         # from the gold assessment loop. Public fields only (no answers).
         if practice_bank is None:
@@ -190,14 +201,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         problems = practice_bank.public_problems()
         if attempt_log is None:
             return {"problems": problems}
-        return {"problems": _band_targeted_order(problems, student_id)}
+        return {"problems": _adaptive_practice_order(problems, student_id, now)}
 
-    def _band_targeted_order(problems: list[dict], student_id: str) -> list[dict]:
-        # Read-only: derive a per-skill target band from the student's own practice
-        # history (frozen item difficulty is never written), then order target-first
-        # within each skill. The read dedups by problem_id in SQL (latest decidable
-        # attempt, most-recent distinct problems) so farming one problem can neither
-        # inflate the staircase nor flush other skills out of the window.
+    def _adaptive_practice_order(problems: list[dict], student_id: str, now: float) -> list[dict]:
+        # Read-only, two tiers (frozen item difficulty is never written):
+        #  - band targeting: per-skill target from the student's recent PRACTICE history
+        #    (dedup-by-problem in SQL resists farming / window-flushing);
+        #  - review-due: skills the student mastered anywhere (cross-session) but let
+        #    lapse past the spacing interval are promoted to the front (capped, interleaved).
         rows = attempt_log.recent_decidable_by_problem(
             f"practice:{student_id}", limit=PRACTICE_HISTORY_READ_CAP
         )
@@ -210,7 +221,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 (problem.difficulty, row["check_result"] == "correct")
             )
         targets = {skill_id: target_band(history) for skill_id, history in per_skill.items()}
-        return order_for_student(problems, targets)
+
+        correct = attempt_log.last_correct_ts_by_skill(student_id)
+        due = review_due(
+            [(student_id, skill_id, "correct", ts) for skill_id, ts in correct],
+            now,
+            interval_seconds=DEFAULT_INTERVAL_SECONDS,
+        )
+        due_skills = [item.skill_id for item in due.get(student_id, [])]
+        return order_for_student(problems, targets, due_skills)
 
     @app.post("/practice/check")
     def practice_check(request: PracticeCheckRequest, student_id: str = Depends(require_auth_token)) -> dict:

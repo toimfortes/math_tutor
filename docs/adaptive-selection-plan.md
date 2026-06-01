@@ -49,6 +49,29 @@ farming, yo-yo, determinism-claim contradiction, unbounded exposure) — all fix
 Cycle 2 (Gemini + Claude) returned READY; its residuals (dedup move-to-end, shared
 SELECT columns, even-count median test) are implemented and tested.
 
+## Review-due-first tier
+The research cascade's gating rule (review-due first, else band-targeted) is wired
+live as a read-only reorder. `attempt_log.last_correct_ts_by_skill(student_id)`
+(cross-session `MAX(ts) WHERE correct GROUP BY skill_id`) feeds the pure, tested
+`review_due`; skills the student mastered anywhere but let lapse past the 2-day
+interval are promoted to the front of `/practice/problems`. `order_for_student` gained
+a `due_skills` tier: round-robin **interleaved** across due skills, **capped** at
+`REVIEW_QUOTA=2` per skill (no massing, no monopolization), remainder in band-targeted
+order. The wall-clock is read only via a `get_clock` FastAPI dependency (pure modules
+get `now` injected; tests override it). Review scope is cross-session (mastery anywhere
+counts); band-targeting stays practice-scoped (a deliberate asymmetry — retention timing
+vs practice-pool difficulty).
+
+## Calibration selection-bias guard
+Because practice exposure is now adaptive, `calibrate_difficulty` excludes the practice
+stream: `AND session_id NOT LIKE 'practice:%'` on the **outer** first-attempt query
+(the `MIN(id)` subquery stays global, so an item first seen in practice is dropped
+rather than counting a warmed-up assessment retry as a cold first attempt). The
+calibration cohort is thus cold, non-practice first attempts — closing the
+selection-bias loop on the offline-reader end.
+
 ## Deferred
-Cross-skill interleaving of the practice list; single next-item endpoint; an
-A/B-validated band target for linear functions; per-skill forgetting curves / bandits.
+Cross-skill interleaving of the non-due practice list; single next-item endpoint; an
+A/B-validated band target for linear functions; per-skill forgetting curves / bandits;
+stronger (N-corrects) mastery for review eligibility; random-exposure calibration
+cohort; a "Review due" UI badge.
