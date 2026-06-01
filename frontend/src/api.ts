@@ -130,6 +130,44 @@ export async function startSession(
   return postTurnJson(fetcher, "/api/session/start", { theme: params.theme }, params.authToken);
 }
 
+export type PracticeProblem = {
+  id: string;
+  skillId: string;
+  prompt: string;
+  answerType: string;
+  representations: string[];
+};
+
+export async function getPracticeProblems(fetcher: FetchLike, authToken: string): Promise<PracticeProblem[]> {
+  const response = await fetcher("/api/practice/problems", { method: "GET", headers: authHeaders(authToken) });
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+  const raw = await response.json();
+  return (raw.problems ?? []).map((problem: any) => ({
+    id: problem.id,
+    skillId: problem.skill_id,
+    prompt: problem.prompt,
+    answerType: problem.answer_type,
+    representations: problem.representations ?? [],
+  }));
+}
+
+export async function checkPractice(
+  fetcher: FetchLike,
+  params: { problemId: string; answer: string; authToken: string },
+): Promise<string> {
+  const response = await fetcher("/api/practice/check", {
+    method: "POST",
+    headers: { "content-type": "application/json", ...authHeaders(params.authToken) },
+    body: JSON.stringify({ problem_id: params.problemId, answer: params.answer }),
+  });
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+  return (await response.json()).check_result as string;
+}
+
 export async function submitTurn(
   fetcher: FetchLike,
   params: { sessionId: string; idempotencyKey: string; answer: string; token: string },

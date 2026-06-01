@@ -319,6 +319,33 @@ button:disabled {
   border-radius: 8px;
 }
 
+.practice-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.practice-item {
+  padding: 16px;
+  background: #ffffff;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+}
+
+.practice-result {
+  display: inline-block;
+  margin-top: 8px;
+  font-weight: 600;
+}
+
+.practice-result.correct {
+  color: #1a7f4b;
+}
+
+.practice-empty {
+  color: #6b7785;
+}
+
 .answer-row {
   display: flex;
   gap: 12px;

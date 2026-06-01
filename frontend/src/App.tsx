@@ -1,8 +1,11 @@
-import { ArrowRight, BadgeCheck, CalendarCheck2, CheckCircle2, CircleAlert, FastForward, LogIn, RotateCcw, Send } from "lucide-react";
+import { ArrowRight, BadgeCheck, CalendarCheck2, CheckCircle2, CircleAlert, Dumbbell, FastForward, LogIn, RotateCcw, Send } from "lucide-react";
 import { FormEvent, useState } from "react";
 import {
+  checkPractice,
+  getPracticeProblems,
   getStudentState,
   login,
+  PracticeProblem,
   recordRetention,
   recordTransfer,
   registerAccount,
@@ -16,6 +19,7 @@ import { hintForLevel } from "./hints";
 import { ChatPanel } from "./components/ChatPanel";
 import { GraphView } from "./components/GraphView";
 import { GridView } from "./components/GridView";
+import { PracticePanel } from "./components/PracticePanel";
 import { TableView } from "./components/TableView";
 
 const THEMES = [
@@ -37,6 +41,27 @@ export function App() {
   const [studentId, setStudentId] = useState("");
   const [password, setPassword] = useState("");
   const [authToken, setAuthToken] = useState<string | null>(null);
+  const [practiceMode, setPracticeMode] = useState(false);
+  const [practiceProblems, setPracticeProblems] = useState<PracticeProblem[]>([]);
+
+  async function enterPractice() {
+    if (!authToken) return;
+    setBusy(true);
+    setError(null);
+    try {
+      setPracticeProblems(await getPracticeProblems(fetch, authToken));
+      setPracticeMode(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load practice");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function practiceCheck(problemId: string, answer: string): Promise<string> {
+    if (!authToken) return "undecidable";
+    return checkPractice(fetch, { problemId, answer, authToken });
+  }
 
   async function signIn(event: FormEvent) {
     event.preventDefault();
@@ -215,6 +240,15 @@ export function App() {
           <RotateCcw size={18} />
           Start
         </button>
+        <button
+          className="secondary"
+          type="button"
+          onClick={() => (practiceMode ? setPracticeMode(false) : void enterPractice())}
+          disabled={busy}
+        >
+          <Dumbbell size={18} />
+          {practiceMode ? "Back to tutor" : "Extra practice"}
+        </button>
         <div className="stat-row">
           <span>XP</span>
           <strong>{totalXp}</strong>
@@ -223,7 +257,17 @@ export function App() {
       </aside>
 
       <section className="workspace">
-        {turn ? (
+        {practiceMode ? (
+          <>
+            <header className="problem-header">
+              <div>
+                <p className="eyebrow">Extra practice</p>
+                <h2>Generated practice problems</h2>
+              </div>
+            </header>
+            <PracticePanel problems={practiceProblems} onCheck={practiceCheck} />
+          </>
+        ) : turn ? (
           <>
             <header className="problem-header">
               <div>

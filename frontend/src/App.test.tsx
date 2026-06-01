@@ -333,6 +333,40 @@ describe("App", () => {
     expect(host.textContent).toContain("XP9");
   });
 
+  it("enters the separate extra-practice pool", async () => {
+    const practiceProblems = {
+      problems: [
+        {
+          id: "candidate:lin_evaluate:0",
+          skill_id: "lin_evaluate",
+          prompt: "For y = 2x + 1, find y when x = 3.",
+          answer_type: "numeric",
+          representations: ["text"],
+        },
+      ],
+    };
+    const fetchMock = authMocks(vi.fn())
+      .mockReturnValueOnce(jsonResponse(turnResponse("Plot the station at (4, 3).", "lf_p01")))
+      .mockReturnValueOnce(jsonResponse(skillState()))
+      .mockReturnValueOnce(jsonResponse(practiceProblems));
+    vi.stubGlobal("fetch", fetchMock);
+
+    host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+
+    await act(async () => {
+      root?.render(<App />);
+    });
+    await signIn(host);
+    await act(async () => {
+      button(host!, "Extra practice").click();
+    });
+
+    expect(host.textContent).toContain("Generated practice problems");
+    expect(host.textContent).toContain("For y = 2x + 1, find y when x = 3.");
+  });
+
   it("renders an empty grid for plot-a-point problems", async () => {
     const gridProblem = {
       prompt: "Plot the point that is 4 right and 3 up.",
