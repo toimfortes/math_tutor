@@ -28,6 +28,41 @@ def _staged_db(tmp_path, per_skill=5):
     return db_path
 
 
+def test_oer_sources_record_an_edition(tmp_path):
+    db_path = tmp_path / "content.sqlite3"
+    ingest_oer_manifest(DEFAULT_OER_MANIFEST_PATH, db_path, deployment_mode=DeploymentMode.FREE_NONCOMMERCIAL)
+
+    with connect_content_db(db_path) as conn:
+        for (raw_json,) in conn.execute("SELECT raw_json FROM content_source WHERE retrieval_method = 'reviewed_oer_manifest'"):
+            assert json.loads(raw_json).get("edition", "").strip()
+
+
+def test_commercial_im_source_pinned_to_nc_v360_edition_is_rejected(tmp_path):
+    import pytest
+
+    data = json.loads(DEFAULT_OER_MANIFEST_PATH.read_text())
+    for source in data["sources"]:
+        if source["provider"] == "illustrative_mathematics":
+            source["edition"] = "IM v.360 (2024) edition"  # NC edition, but license still claims commercial
+    manifest = tmp_path / "bad_im.json"
+    manifest.write_text(json.dumps(data))
+
+    with pytest.raises(ValueError, match="non-commercial IM"):
+        ingest_oer_manifest(manifest, tmp_path / "content.sqlite3", deployment_mode=DeploymentMode.FREE_NONCOMMERCIAL)
+
+
+def test_oer_source_missing_edition_is_rejected(tmp_path):
+    import pytest
+
+    data = json.loads(DEFAULT_OER_MANIFEST_PATH.read_text())
+    data["sources"][0].pop("edition", None)
+    manifest = tmp_path / "no_edition.json"
+    manifest.write_text(json.dumps(data))
+
+    with pytest.raises(ValueError, match="must record an 'edition'"):
+        ingest_oer_manifest(manifest, tmp_path / "content.sqlite3", deployment_mode=DeploymentMode.FREE_NONCOMMERCIAL)
+
+
 def test_promote_approves_candidates_but_keeps_runtime_bank_frozen(tmp_path):
     db_path = _staged_db(tmp_path)
     export_path = tmp_path / "linear_functions.exported.json"

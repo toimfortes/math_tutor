@@ -700,6 +700,29 @@ def _validate_oer_manifest(data: dict[str, Any], deployment_mode: DeploymentMode
             )
         if not source.get("items"):
             raise ValueError(f"OER source {source['id']} must contain at least one item")
+        if not source.get("edition", "").strip():
+            raise ValueError(f"OER source {source['id']} must record an 'edition' for license provenance")
+        _check_illustrative_math_edition(source)
+
+
+# Illustrative Mathematics K-12 (2019-2021) is CC BY 4.0 (commercial use allowed with
+# attribution); the v.360 (2024) edition is CC BY-NC and must not be used commercially.
+# Reject an IM source that claims commercial use while naming the NC v.360/2024 edition.
+_IM_NONCOMMERCIAL_EDITION_MARKERS = ("v.360", "v360", "2024")
+
+
+def _check_illustrative_math_edition(source: dict[str, Any]) -> None:
+    if source.get("provider") != "illustrative_mathematics":
+        return
+    if not source["license"].get("commercial_use_allowed"):
+        return
+    edition = source.get("edition", "").lower()
+    for marker in _IM_NONCOMMERCIAL_EDITION_MARKERS:
+        if marker in edition:
+            raise ValueError(
+                f"OER source {source['id']} claims commercial use but its edition references "
+                f"the non-commercial IM '{marker}' edition (CC BY-NC); pin the 2019-2021 CC BY 4.0 edition"
+            )
 
 
 def _insert_oer_sources(conn: sqlite3.Connection, data: dict[str, Any], manifest_path: Path) -> None:
