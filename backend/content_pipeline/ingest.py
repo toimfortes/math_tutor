@@ -10,11 +10,13 @@ import sqlite3
 from typing import Any
 
 from backend.app.content.seed_loader import DEFAULT_GOLD_PATH, RealizedProblemRef
+from backend.content_pipeline.calibration import PRIOR_STRENGTH, calibrate
 from backend.content_pipeline.candidate_generation import (
     GENERATORS,
     generate_validated_candidates,
     validate_stored_candidate,
 )
+from backend.content_pipeline.difficulty import band_to_logit, difficulty_band, heuristic_difficulty
 from backend.content_pipeline.provenance import build_promotion_manifest
 from backend.content_pipeline.templates.linear_functions import LINEAR_FUNCTION_TEMPLATE_CASES, LinearTemplateCase
 
@@ -393,20 +395,28 @@ def generate_candidates(
             candidates = generate_validated_candidates(skill_id, per_skill)
             for position, candidate in enumerate(candidates):
                 problem_id = f"candidate:{skill_id}:{position}"
+                prior = heuristic_difficulty(skill_id, candidate.kind, candidate.params)
                 conn.execute(
                     "INSERT INTO problem_item VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         problem_id,
                         template_id,
                         skill_id,
-                        2,
+                        difficulty_band(prior),
                         candidate.answer_type,
                         candidate.checker,
                         _to_json(["text"]),
                         "practice",
                         source_item_id,
                         "candidate",
-                        _to_json({"generated": True, "params": candidate.params, "known_wrong_answers": candidate.known_wrong}),
+                        _to_json(
+                            {
+                                "generated": True,
+                                "params": candidate.params,
+                                "known_wrong_answers": candidate.known_wrong,
+                                "difficulty_prior": prior,
+                            }
+                        ),
                         order,
                     ),
                 )
@@ -627,6 +637,53 @@ def verify_practice_bank(path: Path | str) -> PracticeVerificationReport:
     return PracticeVerificationReport(
         ok=not errors, problem_count=len(data.get("problems", [])), errors=errors
     )
+
+
+_OUTCOMES = {"correct", "incorrect", "undecidable"}
+
+
+def calibrate_difficulty(
+    session_db_path: Path | str,
+    content_db_path: Path | str | None = None,
+    *,
+    prior_strength: float = PRIOR_STRENGTH,
+) -> dict[str, dict]:
+    """Empirical-Bayes difficulty report from the append-only attempt log.
+
+    Decoupled, offline reporting step: reads first-attempt-per-(student,item)
+    outcomes from the attempt log (strict first by autoincrement id), seeds each
+    item with its heuristic/authored prior from the content DB, and shrinks. Does
+    not write back to any DB or touch scheduling.
+    """
+    with connect_content_db(session_db_path) as conn:
+        rows = conn.execute(
+            "SELECT problem_id, check_result FROM attempt_log "
+            "WHERE id IN (SELECT MIN(id) FROM attempt_log GROUP BY student_id, problem_id)"
+        ).fetchall()
+    first_attempts = [(pid, result if result in _OUTCOMES else "undecidable") for pid, result in rows]
+
+    priors: dict[str, float] = {}
+    if content_db_path is not None:
+        with connect_content_db(content_db_path) as conn:
+            for item_id, difficulty, extra_json in conn.execute(
+                "SELECT id, difficulty, extra_json FROM problem_item"
+            ):
+                extra = json.loads(extra_json) if extra_json else {}
+                priors[item_id] = (
+                    extra["difficulty_prior"] if "difficulty_prior" in extra else band_to_logit(difficulty)
+                )
+
+    calibrated = calibrate(first_attempts, priors, prior_strength=prior_strength)
+    return {
+        item_id: {
+            "difficulty": value.difficulty,
+            "responses": value.responses,
+            "prior": value.prior,
+            "calibrated": value.calibrated,
+            "undecidable": value.undecidable,
+        }
+        for item_id, value in calibrated.items()
+    }
 
 
 def _reset_tables(conn: sqlite3.Connection) -> None:
@@ -1170,6 +1227,13 @@ def main(argv: list[str] | None = None) -> None:
     )
     verify_practice_parser.add_argument("--input", type=Path, required=True)
 
+    calibrate_parser = subparsers.add_parser(
+        "calibrate", help="Empirical-Bayes difficulty report from the attempt log (offline, JSON only)."
+    )
+    calibrate_parser.add_argument("--session-db", type=Path, required=True, help="DB holding the attempt_log")
+    calibrate_parser.add_argument("--content-db", type=Path, default=None, help="DB holding problem_item priors")
+    calibrate_parser.add_argument("--output", type=Path, required=True)
+
     args = parser.parse_args(argv)
     if args.command == "gold":
         summary = ingest_gold_bank(args.input, args.db, deployment_mode=args.deployment_mode, replace=args.replace)
@@ -1213,6 +1277,11 @@ def main(argv: list[str] | None = None) -> None:
         if not report.ok:
             raise SystemExit("\n".join(report.errors))
         print(f"practice bank verified: {report.problem_count} problems")
+        return
+    if args.command == "calibrate":
+        report = calibrate_difficulty(args.session_db, args.content_db)
+        args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+        print(f"calibrated {len(report)} items -> {args.output}")
 
 
 if __name__ == "__main__":

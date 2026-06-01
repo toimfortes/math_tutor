@@ -28,6 +28,57 @@ def _staged_db(tmp_path, per_skill=5):
     return db_path
 
 
+def test_generated_items_get_a_heuristic_difficulty_band_and_prior(tmp_path):
+    db_path = _staged_db(tmp_path, per_skill=3)
+
+    with connect_content_db(db_path) as conn:
+        rows = conn.execute(
+            "SELECT difficulty, extra_json FROM problem_item WHERE curation_status = 'candidate'"
+        ).fetchall()
+    assert rows
+    for difficulty, extra_json in rows:
+        assert 1 <= difficulty <= 5  # heuristic band, not the old hardcoded constant
+        assert "difficulty_prior" in json.loads(extra_json)
+
+
+def test_calibrate_difficulty_reports_from_the_attempt_log(tmp_path):
+    from backend.content_pipeline.ingest import calibrate_difficulty
+
+    content_db = _staged_db(tmp_path, per_skill=3)
+    # synthesize an attempt log in a separate session DB
+    session_db = tmp_path / "session.db"
+    conn = connect_content_db(session_db)
+    conn.execute(
+        "CREATE TABLE attempt_log (id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL, session_id TEXT, "
+        "student_id TEXT, skill_id TEXT, problem_id TEXT, check_result TEXT, xp_awarded INTEGER)"
+    )
+    item = "candidate:lin_evaluate:0"
+    # 12 distinct students all get it wrong on first attempt; + retries that must be ignored
+    for i in range(12):
+        conn.execute(
+            "INSERT INTO attempt_log (ts, session_id, student_id, skill_id, problem_id, check_result, xp_awarded) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (1.0, f"s{i}", f"stu{i}", "lin_evaluate", item, "incorrect", 0),
+        )
+        conn.execute(
+            "INSERT INTO attempt_log (ts, session_id, student_id, skill_id, problem_id, check_result, xp_awarded) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (2.0, f"s{i}", f"stu{i}", "lin_evaluate", item, "correct", 0),  # later retry -> ignored
+        )
+    conn.commit()
+    conn.close()
+
+    report = calibrate_difficulty(session_db, content_db)
+
+    entry = report[item]
+    assert entry["responses"] == 12  # first attempts only; retries ignored
+    assert entry["calibrated"] is True
+    assert entry["difficulty"] > entry["prior"]  # all-wrong -> harder than the heuristic prior
+    # an item with no attempts is reported uncalibrated at its prior
+    other = report["candidate:lin_evaluate:1"]
+    assert other["calibrated"] is False and other["responses"] == 0
+
+
 def test_oer_sources_record_an_edition(tmp_path):
     db_path = tmp_path / "content.sqlite3"
     ingest_oer_manifest(DEFAULT_OER_MANIFEST_PATH, db_path, deployment_mode=DeploymentMode.FREE_NONCOMMERCIAL)
