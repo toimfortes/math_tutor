@@ -14,11 +14,13 @@ test("a student works the first problems in a real browser", async ({ page }) =>
   await page.screenshot({ path: "e2e/screenshots/01-grid.png", fullPage: true });
 
   // Answer it: 4 km east, 3 km north -> (4, 3).
+  const firstPrompt = await page.getByRole("heading", { level: 2 }).textContent();
   await page.getByPlaceholder("Type your answer").fill("(4, 3)");
   await page.getByRole("button", { name: "Submit answer" }).click();
 
-  // Problem 2 (lf_p02) uses the table representation -> TableView paints a table.
-  await expect(page.locator("table.data-table")).toBeVisible();
-  await expect(page.locator("table.data-table")).toContainText("Tanks");
-  await page.screenshot({ path: "e2e/screenshots/02-table.png", fullPage: true });
+  // A correct answer advances to a different (interleaved) problem; the grid is
+  // gone and the prompt has changed.
+  await expect(page.locator("svg.grid-view")).toHaveCount(0);
+  await expect(page.getByRole("heading", { level: 2 })).not.toHaveText(firstPrompt ?? "");
+  await page.screenshot({ path: "e2e/screenshots/02-next.png", fullPage: true });
 });
