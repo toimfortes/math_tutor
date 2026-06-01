@@ -79,6 +79,50 @@ def test_calibrate_difficulty_reports_from_the_attempt_log(tmp_path):
     assert other["calibrated"] is False and other["responses"] == 0
 
 
+def test_replace_sources_after_generation_clears_candidates(tmp_path):
+    # --replace-sources after generate-candidates must not FK-crash on source_item rows
+    # that candidates reference. Candidates are regenerable/derived from those sources,
+    # so they are cleared; the source refresh then succeeds.
+    db = _staged_db(tmp_path, per_skill=3)  # gold + oer + candidates (none promoted)
+
+    def count(sql, *args):
+        with connect_content_db(db) as conn:
+            return conn.execute(sql, args).fetchone()[0]
+
+    assert count("SELECT COUNT(*) FROM problem_item WHERE curation_status='candidate'") > 0
+
+    ingest_oer_manifest(DEFAULT_OER_MANIFEST_PATH, db, deployment_mode=DeploymentMode.FREE_NONCOMMERCIAL,
+                        replace_sources=True)  # must NOT raise FOREIGN KEY constraint failed
+
+    assert count("SELECT COUNT(*) FROM problem_item WHERE curation_status='candidate'") == 0  # cleared
+    assert count("SELECT COUNT(*) FROM source_item") > 0  # sources refreshed
+
+
+def test_replace_sources_refuses_to_orphan_curated_content(tmp_path):
+    # Promoted/approved generated content has a hard provenance link to its source_item.
+    # Replacing those sources would orphan it -> fail CLOSED with an explicit message,
+    # leaving the curated content intact (never silently destroyed).
+    import pytest
+
+    db = _staged_db(tmp_path, per_skill=3)
+    promote_candidates(db, limit=1, promoted_at="2026-06-01T00:00:00Z")  # one approved
+
+    with connect_content_db(db) as conn:
+        approved_before = conn.execute(
+            "SELECT COUNT(*) FROM problem_item WHERE curation_status='approved'"
+        ).fetchone()[0]
+    assert approved_before == 1
+
+    with pytest.raises(ValueError, match="replace sources"):
+        ingest_oer_manifest(DEFAULT_OER_MANIFEST_PATH, db,
+                            deployment_mode=DeploymentMode.FREE_NONCOMMERCIAL, replace_sources=True)
+
+    with connect_content_db(db) as conn:  # curated content preserved
+        assert conn.execute(
+            "SELECT COUNT(*) FROM problem_item WHERE curation_status='approved'"
+        ).fetchone()[0] == 1
+
+
 def test_regenerate_after_promote_does_not_collide(tmp_path):
     # Documented workflow: generate -> promote -> (later) generate again. Promotion
     # leaves the candidate's deterministic id in problem_item as 'approved', so a

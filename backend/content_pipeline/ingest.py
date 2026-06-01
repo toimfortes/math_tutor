@@ -309,7 +309,7 @@ def ingest_oer_manifest(
         conn.executescript(SCHEMA)
         _validate_oer_manifest(data, deployment_mode)
         if replace_sources:
-            _delete_oer_sources(conn, [source["id"] for source in data.get("sources", [])])
+            _replace_oer_sources(conn, [source["id"] for source in data.get("sources", [])])
         _insert_oer_sources(conn, data, manifest_path)
         conn.commit()
 
@@ -736,6 +736,33 @@ def review_queue(
 def _reset_tables(conn: sqlite3.Connection) -> None:
     for table in TABLES:
         conn.execute(f"DELETE FROM {table}")
+
+
+def _replace_oer_sources(conn: sqlite3.Connection, source_ids: list[str]) -> None:
+    """Delete the given OER sources so the manifest can refresh them.
+
+    `problem_item`/`problem_realization` carry a NOT NULL FK to `source_item` (FK
+    enforcement is ON), so deleting a referenced source would fail. Generated CANDIDATES
+    are derived from these sources and regenerable, so they are cleared first. CURATED
+    content (approved/promoted) has a hard provenance link, so if any still references a
+    source being replaced we fail CLOSED with an explicit message rather than orphan or
+    silently destroy it.
+    """
+    if not source_ids:
+        return
+    _clear_candidates(conn)
+    placeholders = ",".join("?" for _ in source_ids)
+    blocking = conn.execute(
+        f"SELECT COUNT(*) FROM problem_item WHERE source_item_id IN "
+        f"(SELECT id FROM source_item WHERE source_id IN ({placeholders}))",
+        source_ids,
+    ).fetchone()[0]
+    if blocking:
+        raise ValueError(
+            f"cannot replace sources: {blocking} approved/promoted generated problem(s) still "
+            "reference them; remove or re-export that curated content before you replace sources"
+        )
+    _delete_oer_sources(conn, source_ids)
 
 
 def _delete_oer_sources(conn: sqlite3.Connection, source_ids: list[str]) -> None:
