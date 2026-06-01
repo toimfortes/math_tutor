@@ -289,6 +289,8 @@ export interface components {
             public_problem: components["schemas"]["PublicProblemModel"];
             /** Session Id */
             session_id: string;
+            /** Token */
+            token?: string | null;
             /** Xp Awarded */
             xp_awarded: number;
         };
@@ -317,7 +319,9 @@ export interface operations {
     record_retention_assessment_retention_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -350,7 +354,9 @@ export interface operations {
     record_transfer_assessment_transfer_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -405,7 +411,9 @@ export interface operations {
     skip_session_problem_session_skip_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -474,7 +482,9 @@ export interface operations {
                 session_id: string;
                 skill_id: string;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 student_id: string;
             };
@@ -505,7 +515,9 @@ export interface operations {
     submit_turn_turn_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };

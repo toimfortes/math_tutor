@@ -77,6 +77,7 @@ class TurnResponseModel(BaseModel):
     proposed_hint_level: int
     guardrail_fires: list[str]
     diagnostic: DiagnosticModel | None = None
+    token: str | None = None
 
 
 class SkillStateModel(BaseModel):

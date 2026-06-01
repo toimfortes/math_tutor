@@ -79,17 +79,22 @@ def test_p7_api_endpoints_expose_skip_transfer_retention_and_state():
     start = client.post("/session/start", json={"student_id": "student-1", "theme": "space_logistics"}).json()
     session_id = start["session_id"]
     skill_id = start["public_problem"]["skill_id"]
+    auth = {"Authorization": f"Bearer {start['token']}"}
 
-    skip = client.post("/session/skip", json={"session_id": session_id, "reason": "stuck"})
+    skip = client.post("/session/skip", json={"session_id": session_id, "reason": "stuck"}, headers=auth)
     transfer = client.post(
         "/assessment/transfer",
         json={"session_id": session_id, "skill_id": skill_id, "context_key": "drone_physics:word"},
+        headers=auth,
     )
     retention = client.post(
         "/assessment/retention",
         json={"session_id": session_id, "skill_id": skill_id, "context_key": "space_logistics:delayed"},
+        headers=auth,
     )
-    state = client.get(f"/student/student-1/state", params={"session_id": session_id, "skill_id": skill_id})
+    state = client.get(
+        f"/student/student-1/state", params={"session_id": session_id, "skill_id": skill_id}, headers=auth
+    )
 
     assert skip.status_code == 200
     assert skip.json()["public_problem"]["ref"] != start["public_problem"]["ref"]

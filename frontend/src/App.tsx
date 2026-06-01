@@ -24,12 +24,14 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [turnCount, setTurnCount] = useState(0);
   const [totalXp, setTotalXp] = useState(0);
+  const [token, setToken] = useState<string | null>(null);
 
-  async function loadSkillState(nextTurn: TurnResponse) {
+  async function loadSkillState(nextTurn: TurnResponse, authToken: string) {
     const nextState = await getStudentState(fetch, {
       studentId: STUDENT_ID,
       sessionId: nextTurn.sessionId,
       skillId: nextTurn.publicProblem.skillId,
+      token: authToken,
     });
     setSkillState(nextState);
   }
@@ -40,10 +42,11 @@ export function App() {
     try {
       const next = await startSession(fetch, { studentId: STUDENT_ID, theme: selectedTheme });
       setTurn(next);
+      setToken(next.token);
       setAnswer("");
       setTurnCount(0);
       setTotalXp(next.xpAwarded);
-      await loadSkillState(next);
+      await loadSkillState(next, next.token ?? "");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to start");
     } finally {
@@ -53,7 +56,7 @@ export function App() {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!turn || !answer.trim()) return;
+    if (!turn || !token || !answer.trim()) return;
     setBusy(true);
     setError(null);
     try {
@@ -62,12 +65,13 @@ export function App() {
         sessionId: turn.sessionId,
         idempotencyKey: `local-${nextCount}`,
         answer: answer.trim(),
+        token,
       });
       setTurn(next);
       setTurnCount(nextCount);
       setTotalXp((current) => current + next.xpAwarded);
       setAnswer("");
-      await loadSkillState(next);
+      await loadSkillState(next, token);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to submit");
     } finally {
@@ -76,14 +80,14 @@ export function App() {
   }
 
   async function skipCurrentProblem() {
-    if (!turn) return;
+    if (!turn || !token) return;
     setBusy(true);
     setError(null);
     try {
-      const next = await skipProblem(fetch, { sessionId: turn.sessionId, reason: "student_requested" });
+      const next = await skipProblem(fetch, { sessionId: turn.sessionId, reason: "student_requested", token });
       setTurn(next);
       setAnswer("");
-      await loadSkillState(next);
+      await loadSkillState(next, token);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to skip");
     } finally {
@@ -92,7 +96,7 @@ export function App() {
   }
 
   async function recordAssessment(kind: "transfer" | "retention") {
-    if (!turn) return;
+    if (!turn || !token) return;
     setBusy(true);
     setError(null);
     const contextKey = `${turn.publicProblem.ref.realizationKey}:${kind}`;
@@ -103,11 +107,13 @@ export function App() {
               sessionId: turn.sessionId,
               skillId: turn.publicProblem.skillId,
               contextKey,
+              token,
             })
           : await recordRetention(fetch, {
               sessionId: turn.sessionId,
               skillId: turn.publicProblem.skillId,
               contextKey,
+              token,
             });
       setSkillState(nextState);
     } catch (err) {

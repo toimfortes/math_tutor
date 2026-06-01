@@ -30,6 +30,7 @@ def test_session_and_turn_endpoints_use_mocked_loop():
             "idempotency_key": "turn-1",
             "answer": "(4, 3)",
         },
+        headers={"Authorization": f"Bearer {start_body['token']}"},
     )
 
     assert turn.status_code == 200

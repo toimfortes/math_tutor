@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, StringConstraints
 
@@ -12,6 +12,7 @@ from backend.app.content.seed_loader import load_gold_problem_bank
 from backend.app.services.attempt_log import SqliteAttemptLog
 from backend.app.services.rate_limiter import FixedWindowRateLimiter
 from backend.app.services.session_store import SqliteSessionStore, StaleSessionError
+from backend.app.services.token_store import InMemoryTokenStore, SqliteTokenStore, TokenRecord
 from backend.app.llm.anthropic_client import AnthropicLLMClient
 from backend.app.llm.gemini_client import GeminiLLMClient
 from backend.app.llm.mock_client import MockLLMClient
@@ -83,6 +84,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         else None
     )
     attempt_log = SqliteAttemptLog(active_settings.session_db_path) if active_settings.session_db_path else None
+    token_store = (
+        SqliteTokenStore(active_settings.session_db_path)
+        if active_settings.session_db_path
+        else InMemoryTokenStore()
+    )
     turn_service = TurnService(
         problem_bank=problem_bank,
         llm_client=_build_llm_client(active_settings),
@@ -101,6 +107,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if limiter is not None and not limiter.allow(key):
             raise HTTPException(status_code=429, detail="rate limit exceeded")
 
+    def require_token(authorization: str | None = Header(default=None)) -> TokenRecord:
+        if not authorization or not authorization.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="missing bearer token")
+        record = token_store.resolve(authorization.removeprefix("Bearer ").strip())
+        if record is None:
+            raise HTTPException(status_code=401, detail="invalid token")
+        return record
+
+    def _require_session(auth: TokenRecord, session_id: str) -> None:
+        if auth.session_id != session_id:
+            raise HTTPException(status_code=403, detail="token does not own this session")
+
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok", "app": active_settings.app_name}
@@ -108,12 +126,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/session/start", response_model=TurnResponseModel)
     def start_session(request: StartSessionRequest) -> dict:
         _enforce_rate_limit(f"start:{request.student_id}")
-        return _turn_response_to_dict(
-            turn_service.start_session(student_id=request.student_id, theme=request.theme)
-        )
+        response = turn_service.start_session(student_id=request.student_id, theme=request.theme)
+        payload = _turn_response_to_dict(response)
+        payload["token"] = token_store.issue(session_id=response.session_id, student_id=request.student_id)
+        return payload
 
     @app.post("/turn", response_model=TurnResponseModel)
-    def submit_turn(request: TurnRequest) -> dict:
+    def submit_turn(request: TurnRequest, auth: TokenRecord = Depends(require_token)) -> dict:
+        _require_session(auth, request.session_id)
         _enforce_rate_limit(f"turn:{request.session_id}")
         return _turn_response_to_dict(
             turn_service.submit_turn(
@@ -124,12 +144,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     @app.post("/session/skip", response_model=TurnResponseModel)
-    def skip_session_problem(request: SkipRequest) -> dict:
+    def skip_session_problem(request: SkipRequest, auth: TokenRecord = Depends(require_token)) -> dict:
+        _require_session(auth, request.session_id)
         _enforce_rate_limit(f"skip:{request.session_id}")
         return _turn_response_to_dict(turn_service.skip_problem(request.session_id, reason=request.reason))
 
     @app.post("/assessment/transfer", response_model=SkillStateModel)
-    def record_transfer(request: AssessmentRequest) -> dict:
+    def record_transfer(request: AssessmentRequest, auth: TokenRecord = Depends(require_token)) -> dict:
+        _require_session(auth, request.session_id)
         _enforce_rate_limit(f"assessment:{request.session_id}")
         return _skill_state_to_dict(
             turn_service.record_transfer(
@@ -140,7 +162,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     @app.post("/assessment/retention", response_model=SkillStateModel)
-    def record_retention(request: AssessmentRequest) -> dict:
+    def record_retention(request: AssessmentRequest, auth: TokenRecord = Depends(require_token)) -> dict:
+        _require_session(auth, request.session_id)
         _enforce_rate_limit(f"assessment:{request.session_id}")
         return _skill_state_to_dict(
             turn_service.record_retention(
@@ -151,7 +174,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     @app.get("/student/{student_id}/state", response_model=SkillStateModel)
-    def get_student_state(student_id: str, session_id: str, skill_id: str) -> dict:
+    def get_student_state(student_id: str, session_id: str, skill_id: str, auth: TokenRecord = Depends(require_token)) -> dict:
+        _require_session(auth, session_id)
+        if auth.student_id != student_id:
+            raise HTTPException(status_code=403, detail="token does not match student")
         return _skill_state_to_dict(turn_service.skill_state(session_id, skill_id=skill_id, student_id=student_id))
 
     return app

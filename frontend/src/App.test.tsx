@@ -34,6 +34,7 @@ function turnResponse(prompt: string, problemId: string) {
     proposed_hint_level: 0,
     guardrail_fires: [],
     diagnostic: null,
+    token: "tok-s1",
   };
 }
 

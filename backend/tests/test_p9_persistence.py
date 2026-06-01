@@ -117,11 +117,16 @@ def test_app_persists_sessions_to_the_configured_sqlite_file(tmp_path):
     start = first_app.post("/session/start", json={"student_id": "stu", "theme": "space_logistics"}).json()
     session_id = start["session_id"]
     skill_id = start["public_problem"]["skill_id"]
-    first_app.post("/turn", json={"session_id": session_id, "idempotency_key": "t1", "answer": "(4, 3)"})
+    auth = {"Authorization": f"Bearer {start['token']}"}
+    first_app.post(
+        "/turn", json={"session_id": session_id, "idempotency_key": "t1", "answer": "(4, 3)"}, headers=auth
+    )
 
-    # a freshly constructed app on the same db file still sees the session.
+    # a freshly constructed app on the same db file still sees the session and the token.
     second_app = TestClient(create_app(settings))
-    state = second_app.get(f"/student/stu/state", params={"session_id": session_id, "skill_id": skill_id})
+    state = second_app.get(
+        f"/student/stu/state", params={"session_id": session_id, "skill_id": skill_id}, headers=auth
+    )
 
     assert state.status_code == 200
     assert state.json()["skill_id"] == skill_id

@@ -51,9 +51,10 @@ def test_skip_is_rate_limited_per_session():
     settings = Settings.from_env({"RATE_LIMIT_PER_MINUTE": "1"})
     client = TestClient(create_app(settings))
     start = client.post("/session/start", json={"student_id": "stu", "theme": "neutral"}).json()
+    auth = {"Authorization": f"Bearer {start['token']}"}
 
-    first = client.post("/session/skip", json={"session_id": start["session_id"], "reason": "stuck"})
-    second = client.post("/session/skip", json={"session_id": start["session_id"], "reason": "stuck"})
+    first = client.post("/session/skip", json={"session_id": start["session_id"], "reason": "stuck"}, headers=auth)
+    second = client.post("/session/skip", json={"session_id": start["session_id"], "reason": "stuck"}, headers=auth)
 
     assert first.status_code == 200
     assert second.status_code == 429
@@ -63,14 +64,15 @@ def test_assessment_writes_are_rate_limited_per_session():
     settings = Settings.from_env({"RATE_LIMIT_PER_MINUTE": "1"})
     client = TestClient(create_app(settings))
     start = client.post("/session/start", json={"student_id": "stu", "theme": "neutral"}).json()
+    auth = {"Authorization": f"Bearer {start['token']}"}
     payload = {
         "session_id": start["session_id"],
         "skill_id": start["public_problem"]["skill_id"],
         "context_key": "neutral:transfer",
     }
 
-    first = client.post("/assessment/transfer", json=payload)
-    second = client.post("/assessment/transfer", json=payload)
+    first = client.post("/assessment/transfer", json=payload, headers=auth)
+    second = client.post("/assessment/transfer", json=payload, headers=auth)
 
     assert first.status_code == 200
     assert second.status_code == 429

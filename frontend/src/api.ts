@@ -79,6 +79,7 @@ export type TurnResponse = {
   proposedHintLevel: number;
   guardrailFires: string[];
   diagnostic: Diagnostic | null;
+  token: string | null;
 };
 
 export type SkillState = {
@@ -104,50 +105,55 @@ export async function startSession(
 
 export async function submitTurn(
   fetcher: FetchLike,
-  params: { sessionId: string; idempotencyKey: string; answer: string },
+  params: { sessionId: string; idempotencyKey: string; answer: string; token: string },
 ): Promise<TurnResponse> {
-  return postJson(fetcher, "/api/turn", {
-    session_id: params.sessionId,
-    idempotency_key: params.idempotencyKey,
-    answer: params.answer,
-  });
+  return postTurnJson(
+    fetcher,
+    "/api/turn",
+    { session_id: params.sessionId, idempotency_key: params.idempotencyKey, answer: params.answer },
+    params.token,
+  );
 }
 
 export async function skipProblem(
   fetcher: FetchLike,
-  params: { sessionId: string; reason: string },
+  params: { sessionId: string; reason: string; token: string },
 ): Promise<TurnResponse> {
-  return postTurnJson(fetcher, "/api/session/skip", {
-    session_id: params.sessionId,
-    reason: params.reason,
-  });
+  return postTurnJson(
+    fetcher,
+    "/api/session/skip",
+    { session_id: params.sessionId, reason: params.reason },
+    params.token,
+  );
 }
 
 export async function recordTransfer(
   fetcher: FetchLike,
-  params: { sessionId: string; skillId: string; contextKey: string },
+  params: { sessionId: string; skillId: string; contextKey: string; token: string },
 ): Promise<SkillState> {
-  return postSkillStateJson(fetcher, "/api/assessment/transfer", {
-    session_id: params.sessionId,
-    skill_id: params.skillId,
-    context_key: params.contextKey,
-  });
+  return postSkillStateJson(
+    fetcher,
+    "/api/assessment/transfer",
+    { session_id: params.sessionId, skill_id: params.skillId, context_key: params.contextKey },
+    params.token,
+  );
 }
 
 export async function recordRetention(
   fetcher: FetchLike,
-  params: { sessionId: string; skillId: string; contextKey: string },
+  params: { sessionId: string; skillId: string; contextKey: string; token: string },
 ): Promise<SkillState> {
-  return postSkillStateJson(fetcher, "/api/assessment/retention", {
-    session_id: params.sessionId,
-    skill_id: params.skillId,
-    context_key: params.contextKey,
-  });
+  return postSkillStateJson(
+    fetcher,
+    "/api/assessment/retention",
+    { session_id: params.sessionId, skill_id: params.skillId, context_key: params.contextKey },
+    params.token,
+  );
 }
 
 export async function getStudentState(
   fetcher: FetchLike,
-  params: { studentId: string; sessionId: string; skillId: string },
+  params: { studentId: string; sessionId: string; skillId: string; token: string },
 ): Promise<SkillState> {
   const query = new URLSearchParams({
     session_id: params.sessionId,
@@ -155,6 +161,7 @@ export async function getStudentState(
   });
   const response = await fetcher(`/api/student/${params.studentId}/state?${query.toString()}`, {
     method: "GET",
+    headers: authHeaders(params.token),
   });
   if (!response.ok) {
     throw new Error(`Request failed: ${response.status}`);
@@ -162,14 +169,18 @@ export async function getStudentState(
   return toSkillState(await response.json());
 }
 
+function authHeaders(token?: string): Record<string, string> {
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 async function postJson(fetcher: FetchLike, url: string, body: unknown): Promise<TurnResponse> {
   return postTurnJson(fetcher, url, body);
 }
 
-async function postTurnJson(fetcher: FetchLike, url: string, body: unknown): Promise<TurnResponse> {
+async function postTurnJson(fetcher: FetchLike, url: string, body: unknown, token?: string): Promise<TurnResponse> {
   const response = await fetcher(url, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...authHeaders(token) },
     body: JSON.stringify(body),
   });
   if (!response.ok) {
@@ -178,10 +189,10 @@ async function postTurnJson(fetcher: FetchLike, url: string, body: unknown): Pro
   return toTurnResponse(await response.json());
 }
 
-async function postSkillStateJson(fetcher: FetchLike, url: string, body: unknown): Promise<SkillState> {
+async function postSkillStateJson(fetcher: FetchLike, url: string, body: unknown, token?: string): Promise<SkillState> {
   const response = await fetcher(url, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...authHeaders(token) },
     body: JSON.stringify(body),
   });
   if (!response.ok) {
@@ -228,6 +239,7 @@ function toTurnResponse(raw: WireTurn): TurnResponse {
           safeHintLevelCap: raw.diagnostic.safe_hint_level_cap,
         }
       : null,
+    token: raw.token ?? null,
   };
 }
 

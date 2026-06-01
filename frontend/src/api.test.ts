@@ -202,6 +202,7 @@ describe("tutor API client", () => {
       sessionId: started.sessionId,
       idempotencyKey: "turn-1",
       answer: "(4, 3)",
+      token: "test-token",
     });
 
     expect(started.publicProblem.prompt).toBe("Prompt");
@@ -210,6 +211,21 @@ describe("tutor API client", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/session/start",
       expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("sends the bearer token on authenticated requests", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(turnPayload(problem("Next", "lf_p02"))), { status: 200 }));
+
+    await submitTurn(fetchMock, { sessionId: "s1", idempotencyKey: "t1", answer: "1", token: "abc123" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/turn",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer abc123" }),
+      }),
     );
   });
 
@@ -244,21 +260,24 @@ describe("tutor API client", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify(skillState), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify(skillState), { status: 200 }));
 
-    const skipped = await skipProblem(fetchMock, { sessionId: "s1", reason: "stuck" });
+    const skipped = await skipProblem(fetchMock, { sessionId: "s1", reason: "stuck", token: "test-token" });
     const transfer = await recordTransfer(fetchMock, {
       sessionId: "s1",
       skillId: "lin_plot_point",
       contextKey: "drone_physics:word",
+      token: "test-token",
     });
     const retention = await recordRetention(fetchMock, {
       sessionId: "s1",
       skillId: "lin_plot_point",
       contextKey: "space_logistics:delayed",
+      token: "test-token",
     });
     const state = await getStudentState(fetchMock, {
       studentId: "student-1",
       sessionId: "s1",
       skillId: "lin_plot_point",
+      token: "test-token",
     });
 
     expect(skipped.publicProblem.ref.problemId).toBe("lf_p02");
