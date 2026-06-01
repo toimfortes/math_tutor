@@ -97,6 +97,8 @@ def serialize_session(state: SessionState) -> str:
             "contexts_seen": sorted(state.contexts_seen),
             "transfer_passed_by_skill": sorted(state.transfer_passed_by_skill),
             "retention_passed_by_skill": sorted(state.retention_passed_by_skill),
+            "active_attempt_id": state.active_attempt_id,
+            "xp_awarded_by_attempt": state.xp_awarded_by_attempt,
         }
     )
 
@@ -118,6 +120,8 @@ def deserialize_session(data: str, public_resolver: PublicResolver) -> SessionSt
         contexts_seen=set(raw["contexts_seen"]),
         transfer_passed_by_skill=set(raw["transfer_passed_by_skill"]),
         retention_passed_by_skill=set(raw["retention_passed_by_skill"]),
+        active_attempt_id=raw.get("active_attempt_id"),
+        xp_awarded_by_attempt=dict(raw.get("xp_awarded_by_attempt", {})),
         version=raw["version"],
     )
 

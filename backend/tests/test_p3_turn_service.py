@@ -57,6 +57,23 @@ def test_turn_submission_is_idempotent_for_same_key():
     assert len(service.store.sessions[start.session_id].attempts) == 1
 
 
+def test_retries_on_same_problem_are_grouped_under_one_attempt():
+    service = build_service()
+    start = service.start_session(student_id="student-1", theme="space_logistics")
+
+    wrong = service.submit_turn(start.session_id, idempotency_key="wrong-point", answer="(5, 3)")
+    correct = service.submit_turn(start.session_id, idempotency_key="correct-point", answer="(4, 3)")
+    state = service.store.sessions[start.session_id]
+
+    assert wrong.check_result == "incorrect"
+    assert wrong.xp_awarded == 1
+    assert correct.check_result == "correct"
+    assert correct.xp_awarded == 7
+    assert len(state.attempts) == 1
+    assert [submission.check_result for submission in state.attempts[0].submissions] == ["incorrect", "correct"]
+    assert state.attempts[0].submissions[1].self_correction is True
+
+
 def test_wrong_answer_uses_diagnostic_tag_and_does_not_advance_problem():
     service = build_service()
     start = service.start_session(student_id="student-1", theme="space_logistics")

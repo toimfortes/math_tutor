@@ -33,6 +33,12 @@ def compute_xp_award(attempt: ProblemAttempt, *, already_awarded: bool) -> XPAwa
         points += 5
         reasons.append("retention")
 
+    has_decidable_submission = any(
+        submission.check_result in {"correct", "incorrect"} for submission in attempt.submissions
+    )
+    if not has_decidable_submission and attempt.submissions:
+        return XPAward(0, "undecidable")
+
     if not reasons and attempt.submissions:
         points += 1
         reasons.append("engaged")

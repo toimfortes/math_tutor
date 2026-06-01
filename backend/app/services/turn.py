@@ -41,6 +41,8 @@ class SessionState:
     contexts_seen: set[str] = field(default_factory=set)
     transfer_passed_by_skill: set[str] = field(default_factory=set)
     retention_passed_by_skill: set[str] = field(default_factory=set)
+    active_attempt_id: str | None = None
+    xp_awarded_by_attempt: dict[str, int] = field(default_factory=dict)
     version: int = 0
 
 
@@ -108,7 +110,13 @@ class TurnService:
             raise InvalidThemeError(theme)
         session_id = str(uuid4())
         active_ref = self.scheduler.first_ref(theme=theme)
-        state = SessionState(session_id=session_id, student_id=student_id, theme=theme, active_ref=active_ref)
+        state = SessionState(
+            session_id=session_id,
+            student_id=student_id,
+            theme=theme,
+            active_ref=active_ref,
+            active_attempt_id=_new_attempt_id(active_ref),
+        )
         public = self.problem_bank.public_problem(active_ref)
         state.contexts_seen.add(_context_key(public))
         llm, llm_guardrail_fires = self._generate_llm(
@@ -174,14 +182,23 @@ class TurnService:
             known_wrong_answers=known_wrong_answers_for_ref(current_ref),
             variable=_variable_from_answer(private.canonical_answer),
         )
-        submission = SubmissionEvent(check_result=check.check_result, hint_level=0)
-        attempt = ProblemAttempt(problem_attempt_id=idempotency_key, skill_id=public.skill_id, submissions=[submission])
-        state.attempts.append(attempt)
-        xp = compute_xp_award(attempt, already_awarded=False).points
+        attempt = _get_or_create_active_attempt(state, public.skill_id, current_ref)
+        submission = SubmissionEvent(
+            check_result=check.check_result,
+            hint_level=0,
+            self_correction=check.check_result == "correct"
+            and any(previous.check_result == "incorrect" for previous in attempt.submissions),
+        )
+        attempt.submissions.append(submission)
+        previous_xp = state.xp_awarded_by_attempt.get(attempt.problem_attempt_id, 0)
+        total_xp = compute_xp_award(attempt, already_awarded=False).points
+        xp = max(0, total_xp - previous_xp)
+        state.xp_awarded_by_attempt[attempt.problem_attempt_id] = previous_xp + xp
 
         presenting_next = check.check_result == "correct"
         if presenting_next:
             state.active_ref = self.scheduler.next_ref(current_ref, theme=state.theme)
+            state.active_attempt_id = _new_attempt_id(state.active_ref)
 
         active_public = self.problem_bank.public_problem(state.active_ref)
         allowed_help = compute_allowed_help_level(attempt.submissions, max_safe_hint_level=active_public.hint_scaffold.max_safe_hint_level)
@@ -254,6 +271,7 @@ class TurnService:
         state.abandoned_refs.append(skipped_ref)
         state.skip_events.append({"ref": skipped_ref, "reason": reason})
         state.active_ref = self.scheduler.next_ref(skipped_ref, theme=state.theme)
+        state.active_attempt_id = _new_attempt_id(state.active_ref)
         public = self.problem_bank.public_problem(state.active_ref)
         state.contexts_seen.add(_context_key(public))
         llm, llm_guardrail_fires = self._generate_llm(
@@ -382,6 +400,23 @@ def _fallback_llm_response(
         ui_mode="chat",
         proposed_hint_level=allowed_help_level,
     )
+
+
+def _new_attempt_id(ref: RealizedProblemRef) -> str:
+    return f"{ref.problem_id}:{ref.realization_key}:{uuid4()}"
+
+
+def _get_or_create_active_attempt(
+    state: SessionState, skill_id: str, current_ref: RealizedProblemRef
+) -> ProblemAttempt:
+    if state.active_attempt_id is None:
+        state.active_attempt_id = _new_attempt_id(current_ref)
+    for attempt in state.attempts:
+        if attempt.problem_attempt_id == state.active_attempt_id:
+            return attempt
+    attempt = ProblemAttempt(problem_attempt_id=state.active_attempt_id, skill_id=skill_id)
+    state.attempts.append(attempt)
+    return attempt
 
 
 def _variable_from_answer(answer: str) -> str | None:

@@ -41,6 +41,8 @@ def test_session_state_survives_serialization_round_trip():
     assert restored.attempts[0].submissions[0].check_result == original.attempts[0].submissions[0].check_result
     assert restored.contexts_seen == original.contexts_seen
     assert restored.transfer_passed_by_skill == original.transfer_passed_by_skill
+    assert restored.active_attempt_id == original.active_attempt_id
+    assert restored.xp_awarded_by_attempt == original.xp_awarded_by_attempt
     assert set(restored.idempotency) == set(original.idempotency)
     # the cached turn response is rebuilt with a real PublicProblem from the bank.
     cached = restored.idempotency["t1"]
@@ -61,6 +63,8 @@ def test_sqlite_store_persists_session_across_store_instances(tmp_path):
     assert restored.student_id == "stu"
     assert len(restored.attempts) == 1
     assert restored.active_ref == state.active_ref
+    assert restored.active_attempt_id == state.active_attempt_id
+    assert restored.xp_awarded_by_attempt == state.xp_awarded_by_attempt
 
 
 def test_sqlite_store_optimistic_locking_rejects_stale_writes(tmp_path):

@@ -76,6 +76,19 @@ def test_xp_is_deduped_per_problem_attempt():
     assert "deduped" in duplicate_award.reason
 
 
+def test_undecidable_only_attempt_does_not_award_xp():
+    attempt = ProblemAttempt(
+        problem_attempt_id="a1",
+        skill_id="skill",
+        submissions=[SubmissionEvent(check_result="undecidable", hint_level=0)],
+    )
+
+    award = compute_xp_award(attempt, already_awarded=False)
+
+    assert award.points == 0
+    assert award.reason == "undecidable"
+
+
 def test_help_ceiling_escalates_after_two_same_problem_failures():
     submissions = [
         SubmissionEvent(check_result="incorrect", hint_level=0),
