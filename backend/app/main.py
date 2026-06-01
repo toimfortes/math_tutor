@@ -115,10 +115,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/session/skip", response_model=TurnResponseModel)
     def skip_session_problem(request: SkipRequest) -> dict:
+        _enforce_rate_limit(f"skip:{request.session_id}")
         return _turn_response_to_dict(turn_service.skip_problem(request.session_id, reason=request.reason))
 
     @app.post("/assessment/transfer", response_model=SkillStateModel)
     def record_transfer(request: AssessmentRequest) -> dict:
+        _enforce_rate_limit(f"assessment:{request.session_id}")
         return _skill_state_to_dict(
             turn_service.record_transfer(
                 request.session_id,
@@ -129,6 +131,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/assessment/retention", response_model=SkillStateModel)
     def record_retention(request: AssessmentRequest) -> dict:
+        _enforce_rate_limit(f"assessment:{request.session_id}")
         return _skill_state_to_dict(
             turn_service.record_retention(
                 request.session_id,
