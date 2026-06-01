@@ -1,0 +1,823 @@
+from __future__ import annotations
+
+import argparse
+from dataclasses import dataclass
+from enum import StrEnum
+import json
+from pathlib import Path
+import sqlite3
+from typing import Any
+
+from backend.app.content.seed_loader import DEFAULT_GOLD_PATH, RealizedProblemRef
+from backend.content_pipeline.provenance import build_promotion_manifest
+from backend.content_pipeline.templates.linear_functions import LINEAR_FUNCTION_TEMPLATE_CASES, LinearTemplateCase
+
+ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_OER_MANIFEST_PATH = ROOT / "backend/content_pipeline/oer_sources/linear_functions_starter.json"
+
+
+class DeploymentMode(StrEnum):
+    FREE_NONCOMMERCIAL = "free_noncommercial"
+    COMMERCIAL = "commercial"
+
+
+@dataclass(frozen=True)
+class IngestionSummary:
+    db_path: str
+    source_id: str
+    deployment_mode: str
+    license_status: str
+    skill_count: int
+    theme_count: int
+    problem_count: int
+    realization_count: int
+
+
+@dataclass(frozen=True)
+class OerIngestionSummary:
+    db_path: str
+    manifest_path: str
+    deployment_mode: str
+    source_count: int
+    item_count: int
+    license_statuses: list[str]
+
+
+PROBLEM_LEVEL_REALIZATION = "__problem__"
+
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS content_source (
+    id TEXT PRIMARY KEY,
+    provider TEXT NOT NULL,
+    title TEXT NOT NULL,
+    source_url TEXT NOT NULL,
+    publisher TEXT NOT NULL,
+    retrieved_at TEXT NOT NULL,
+    retrieval_method TEXT NOT NULL,
+    source_sha256 TEXT NOT NULL,
+    schema_version TEXT NOT NULL,
+    domain TEXT NOT NULL,
+    description TEXT NOT NULL,
+    usage_notes_json TEXT NOT NULL,
+    raw_json TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS content_license (
+    id TEXT PRIMARY KEY,
+    source_id TEXT NOT NULL REFERENCES content_source(id),
+    license_name TEXT NOT NULL,
+    license_url TEXT NOT NULL,
+    license_status TEXT NOT NULL,
+    attribution_text TEXT NOT NULL,
+    commercial_use_allowed INTEGER NOT NULL,
+    noncommercial_use_allowed INTEGER NOT NULL,
+    sharealike_required INTEGER NOT NULL,
+    free_access_required INTEGER NOT NULL,
+    trademark_restrictions TEXT NOT NULL,
+    reviewed_by TEXT NOT NULL,
+    reviewed_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS source_item (
+    id TEXT PRIMARY KEY,
+    source_id TEXT NOT NULL REFERENCES content_source(id),
+    external_id TEXT NOT NULL,
+    item_type TEXT NOT NULL,
+    grade_band TEXT NOT NULL,
+    domain TEXT NOT NULL,
+    standard_tags TEXT NOT NULL,
+    raw_title TEXT NOT NULL,
+    raw_text TEXT NOT NULL,
+    raw_json TEXT NOT NULL,
+    license_id TEXT NOT NULL REFERENCES content_license(id),
+    ingestion_status TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS skill (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    domain TEXT NOT NULL,
+    standard_tags TEXT NOT NULL,
+    prerequisite_skill_ids TEXT NOT NULL,
+    description TEXT NOT NULL,
+    order_index INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS theme (
+    id TEXT PRIMARY KEY,
+    label TEXT NOT NULL,
+    generative_for TEXT NOT NULL,
+    mapping_hint TEXT NOT NULL,
+    order_index INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS template (
+    id TEXT PRIMARY KEY,
+    skill_id TEXT NOT NULL REFERENCES skill(id),
+    domain TEXT NOT NULL,
+    template_kind TEXT NOT NULL,
+    answer_type TEXT NOT NULL,
+    checker TEXT NOT NULL,
+    param_schema TEXT NOT NULL,
+    solve_function_ref TEXT NOT NULL,
+    diagnostic_catalog_ref TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS problem_item (
+    id TEXT PRIMARY KEY,
+    template_id TEXT NOT NULL REFERENCES template(id),
+    skill_id TEXT NOT NULL REFERENCES skill(id),
+    difficulty INTEGER NOT NULL,
+    answer_type TEXT NOT NULL,
+    checker TEXT NOT NULL,
+    representations TEXT NOT NULL,
+    assessment_role TEXT NOT NULL,
+    source_item_id TEXT NOT NULL REFERENCES source_item(id),
+    curation_status TEXT NOT NULL,
+    extra_json TEXT NOT NULL,
+    order_index INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS problem_realization (
+    problem_item_id TEXT NOT NULL REFERENCES problem_item(id),
+    realization_key TEXT NOT NULL,
+    theme_id TEXT,
+    prompt TEXT NOT NULL,
+    canonical_answer TEXT NOT NULL,
+    solution_method TEXT NOT NULL,
+    param_values TEXT NOT NULL,
+    semantic_roles TEXT NOT NULL,
+    table_json TEXT,
+    extra_json TEXT NOT NULL,
+    source_item_id TEXT NOT NULL REFERENCES source_item(id),
+    license_id TEXT NOT NULL REFERENCES content_license(id),
+    order_index INTEGER NOT NULL,
+    PRIMARY KEY (problem_item_id, realization_key)
+);
+
+CREATE TABLE IF NOT EXISTS hint_scaffold (
+    problem_item_id TEXT PRIMARY KEY REFERENCES problem_item(id),
+    max_safe_hint_level INTEGER NOT NULL,
+    level_0 TEXT NOT NULL,
+    level_1 TEXT NOT NULL,
+    level_2 TEXT NOT NULL,
+    level_3 TEXT
+);
+
+CREATE TABLE IF NOT EXISTS representation_payload (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    problem_item_id TEXT NOT NULL REFERENCES problem_item(id),
+    realization_key TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    payload_json TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS content_promotion (
+    id TEXT PRIMARY KEY,
+    artifact_sha256 TEXT NOT NULL,
+    promoted_at TEXT NOT NULL,
+    promoted_by TEXT NOT NULL,
+    source_count INTEGER NOT NULL,
+    problem_count INTEGER NOT NULL,
+    realization_count INTEGER NOT NULL,
+    verifier_ok INTEGER NOT NULL,
+    verifier_report_json TEXT NOT NULL,
+    provider_runs_json TEXT NOT NULL
+);
+"""
+
+
+TABLES = (
+    "content_promotion",
+    "representation_payload",
+    "hint_scaffold",
+    "problem_realization",
+    "problem_item",
+    "template",
+    "theme",
+    "skill",
+    "source_item",
+    "content_license",
+    "content_source",
+)
+
+
+def is_license_allowed(license_status: str, deployment_mode: DeploymentMode | str) -> bool:
+    mode = DeploymentMode(deployment_mode)
+    if license_status in {"permission_required", "excluded"}:
+        return False
+    if mode == DeploymentMode.FREE_NONCOMMERCIAL:
+        return license_status in {"internal_gold", "commercial_ok", "commercial_ok_sharealike", "noncommercial_only"}
+    return license_status in {"internal_gold", "commercial_ok", "commercial_ok_sharealike"}
+
+
+def connect_content_db(db_path: Path | str) -> sqlite3.Connection:
+    conn = sqlite3.connect(db_path)
+    conn.execute("PRAGMA foreign_keys = ON")
+    return conn
+
+
+def ingest_gold_bank(
+    gold_path: Path = DEFAULT_GOLD_PATH,
+    db_path: Path | str = Path("content.sqlite3"),
+    *,
+    deployment_mode: DeploymentMode | str = DeploymentMode.FREE_NONCOMMERCIAL,
+    source_id: str = "gold_linear_functions",
+    replace: bool = False,
+) -> IngestionSummary:
+    data = json.loads(Path(gold_path).read_text())
+    db_path = Path(db_path)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    license_status = "internal_gold"
+    if not is_license_allowed(license_status, deployment_mode):
+        raise ValueError(f"license status {license_status!r} is not allowed for {deployment_mode!r}")
+
+    with connect_content_db(db_path) as conn:
+        conn.executescript(SCHEMA)
+        if _has_content(conn):
+            if not replace:
+                raise ValueError(f"{db_path} already contains content; pass replace=True to overwrite it")
+            _reset_tables(conn)
+        license_id = f"{source_id}:license"
+        _insert_source(conn, source_id, data, gold_path)
+        _insert_license(conn, license_id, source_id, license_status)
+        _insert_themes(conn, data)
+        _insert_skills(conn, data)
+        _insert_problems(conn, data, source_id, license_id)
+        _insert_promotion(conn, source_id, gold_path)
+        conn.commit()
+
+    return IngestionSummary(
+        db_path=str(db_path),
+        source_id=source_id,
+        deployment_mode=str(DeploymentMode(deployment_mode)),
+        license_status=license_status,
+        skill_count=len(data.get("skills", [])),
+        theme_count=len(data.get("themes", [])),
+        problem_count=len(data.get("problems", [])),
+        realization_count=sum(1 + len(problem.get("themed", {})) for problem in data.get("problems", [])),
+    )
+
+
+def ingest_oer_manifest(
+    manifest_path: Path = DEFAULT_OER_MANIFEST_PATH,
+    db_path: Path | str = Path("content.sqlite3"),
+    *,
+    deployment_mode: DeploymentMode | str = DeploymentMode.FREE_NONCOMMERCIAL,
+    replace_sources: bool = False,
+) -> OerIngestionSummary:
+    manifest_path = Path(manifest_path)
+    data = json.loads(manifest_path.read_text())
+    db_path = Path(db_path)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with connect_content_db(db_path) as conn:
+        conn.executescript(SCHEMA)
+        _validate_oer_manifest(data, deployment_mode)
+        if replace_sources:
+            _delete_oer_sources(conn, [source["id"] for source in data.get("sources", [])])
+        _insert_oer_sources(conn, data, manifest_path)
+        conn.commit()
+
+    statuses = sorted({source["license"]["license_status"] for source in data.get("sources", [])})
+    return OerIngestionSummary(
+        db_path=str(db_path),
+        manifest_path=str(manifest_path),
+        deployment_mode=str(DeploymentMode(deployment_mode)),
+        source_count=len(data.get("sources", [])),
+        item_count=sum(len(source.get("items", [])) for source in data.get("sources", [])),
+        license_statuses=statuses,
+    )
+
+
+def export_gold_bank(db_path: Path | str, output_path: Path | str) -> None:
+    output_path = Path(output_path)
+    with connect_content_db(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        source = conn.execute("SELECT * FROM content_source ORDER BY id LIMIT 1").fetchone()
+        if source is None:
+            raise ValueError("content database has no content_source row")
+        base = {
+            "schema_version": source["schema_version"],
+            "domain": source["domain"],
+            "description": source["description"],
+            "usage_notes": json.loads(source["usage_notes_json"]),
+            "themes": _export_themes(conn),
+            "skills": _export_skills(conn),
+            "problems": _export_problems(conn),
+        }
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(base, indent=2, ensure_ascii=False) + "\n")
+
+
+def _reset_tables(conn: sqlite3.Connection) -> None:
+    for table in TABLES:
+        conn.execute(f"DELETE FROM {table}")
+
+
+def _delete_oer_sources(conn: sqlite3.Connection, source_ids: list[str]) -> None:
+    for source_id in source_ids:
+        conn.execute("DELETE FROM source_item WHERE source_id = ?", (source_id,))
+        conn.execute("DELETE FROM content_license WHERE source_id = ?", (source_id,))
+        conn.execute("DELETE FROM content_source WHERE id = ?", (source_id,))
+
+
+def _has_content(conn: sqlite3.Connection) -> bool:
+    return conn.execute("SELECT COUNT(*) FROM content_source").fetchone()[0] > 0
+
+
+def _insert_source(conn: sqlite3.Connection, source_id: str, data: dict[str, Any], gold_path: Path) -> None:
+    conn.execute(
+        "INSERT INTO content_source VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            source_id,
+            "internal_gold",
+            data.get("description", "Linear functions gold bank"),
+            str(gold_path),
+            "math_tutor",
+            "2026-05-31T00:00:00Z",
+            "checked_in_json",
+            _sha256(gold_path),
+            data["schema_version"],
+            data["domain"],
+            data["description"],
+            _to_json(data.get("usage_notes", [])),
+            _to_json(data),
+        ),
+    )
+
+
+def _insert_license(conn: sqlite3.Connection, license_id: str, source_id: str, license_status: str) -> None:
+    conn.execute(
+        "INSERT INTO content_license VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            license_id,
+            source_id,
+            "Internal gold fixture",
+            "",
+            license_status,
+            "Authored internal gold fixture for regression testing.",
+            1,
+            1,
+            0,
+            0,
+            "",
+            "repo",
+            "2026-05-31T00:00:00Z",
+        ),
+    )
+
+
+def _validate_oer_manifest(data: dict[str, Any], deployment_mode: DeploymentMode | str) -> None:
+    if data.get("schema_version") != "1.0":
+        raise ValueError("OER manifest schema_version must be 1.0")
+    if not data.get("sources"):
+        raise ValueError("OER manifest must contain at least one source")
+    for source in data["sources"]:
+        license_status = source["license"]["license_status"]
+        if not is_license_allowed(license_status, deployment_mode):
+            raise ValueError(
+                f"OER source {source['id']} has license status {license_status!r}, "
+                f"which is not allowed for {DeploymentMode(deployment_mode).value}"
+            )
+        if not source.get("items"):
+            raise ValueError(f"OER source {source['id']} must contain at least one item")
+
+
+def _insert_oer_sources(conn: sqlite3.Connection, data: dict[str, Any], manifest_path: Path) -> None:
+    for source in data["sources"]:
+        license_id = f"{source['id']}:license"
+        conn.execute(
+            "INSERT INTO content_source VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                source["id"],
+                source["provider"],
+                source["title"],
+                source["source_url"],
+                source["publisher"],
+                source["retrieved_at"],
+                "reviewed_oer_manifest",
+                _sha256(manifest_path),
+                data["schema_version"],
+                "linear_functions",
+                data["description"],
+                "[]",
+                _to_json(source),
+            ),
+        )
+        _insert_oer_license(conn, license_id, source)
+        for item in source["items"]:
+            _insert_oer_source_item(conn, source, item, license_id)
+
+
+def _insert_oer_license(conn: sqlite3.Connection, license_id: str, source: dict[str, Any]) -> None:
+    license_data = source["license"]
+    conn.execute(
+        "INSERT INTO content_license VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            license_id,
+            source["id"],
+            license_data["license_name"],
+            license_data["license_url"],
+            license_data["license_status"],
+            license_data["attribution_text"],
+            1 if license_data["commercial_use_allowed"] else 0,
+            1 if license_data["noncommercial_use_allowed"] else 0,
+            1 if license_data["sharealike_required"] else 0,
+            1 if license_data["free_access_required"] else 0,
+            license_data.get("trademark_restrictions", ""),
+            "repo",
+            source["retrieved_at"],
+        ),
+    )
+
+
+def _insert_oer_source_item(
+    conn: sqlite3.Connection,
+    source: dict[str, Any],
+    item: dict[str, Any],
+    license_id: str,
+) -> None:
+    raw_json = {
+        **item,
+        "source_url": item["source_url"],
+        "candidate_skill_ids": item.get("candidate_skill_ids", []),
+        "learning_goal": item.get("learning_goal", ""),
+    }
+    conn.execute(
+        "INSERT INTO source_item VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            f"{source['id']}:{item['external_id']}",
+            source["id"],
+            item["external_id"],
+            item["item_type"],
+            item["grade_band"],
+            item["domain"],
+            _to_json(item.get("standard_tags", [])),
+            item["raw_title"],
+            item["raw_text"],
+            _to_json(raw_json),
+            license_id,
+            "staged_oer",
+        ),
+    )
+
+
+def _insert_themes(conn: sqlite3.Connection, data: dict[str, Any]) -> None:
+    for index, theme in enumerate(data.get("themes", [])):
+        conn.execute(
+            "INSERT INTO theme VALUES (?, ?, ?, ?, ?)",
+            (
+                theme["id"],
+                theme["label"],
+                _to_json(theme.get("generative_for", [])),
+                theme.get("mapping_hint", ""),
+                index,
+            ),
+        )
+
+
+def _insert_skills(conn: sqlite3.Connection, data: dict[str, Any]) -> None:
+    for index, skill in enumerate(data.get("skills", [])):
+        conn.execute(
+            "INSERT INTO skill VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                skill["id"],
+                skill["name"],
+                data["domain"],
+                _to_json(skill.get("standard_tags", [])),
+                _to_json(skill.get("prerequisites", [])),
+                skill.get("description", ""),
+                index,
+            ),
+        )
+
+
+def _insert_problems(conn: sqlite3.Connection, data: dict[str, Any], source_id: str, license_id: str) -> None:
+    cases_by_ref = {case.ref: case for case in LINEAR_FUNCTION_TEMPLATE_CASES}
+    for index, problem in enumerate(data.get("problems", [])):
+        source_item_id = f"{source_id}:{problem['id']}"
+        template_id = f"{data['domain']}:{problem['id']}"
+        neutral_case = cases_by_ref[RealizedProblemRef(problem["id"], "neutral")]
+        conn.execute(
+            "INSERT INTO source_item VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                source_item_id,
+                source_id,
+                problem["id"],
+                "problem",
+                "",
+                data["domain"],
+                _to_json(_skill_tags(data, problem["skill_id"])),
+                problem["id"],
+                problem["neutral"]["prompt"],
+                _to_json(problem),
+                license_id,
+                "promoted",
+            ),
+        )
+        conn.execute(
+            "INSERT INTO template VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                template_id,
+                problem["skill_id"],
+                data["domain"],
+                neutral_case.kind,
+                problem["answer_type"],
+                problem["checker"],
+                _to_json(_param_schema(neutral_case)),
+                "backend.content_pipeline.templates.linear_functions.solve_case",
+                "backend.app.domain.diagnostic_catalog",
+            ),
+        )
+        conn.execute(
+            "INSERT INTO problem_item VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                problem["id"],
+                template_id,
+                problem["skill_id"],
+                problem.get("difficulty", 1),
+                problem["answer_type"],
+                problem["checker"],
+                _to_json(problem.get("representations", [])),
+                problem.get("assessment_role", "practice"),
+                source_item_id,
+                "promoted",
+                _to_json(_problem_extra(problem)),
+                index,
+            ),
+        )
+        _insert_hint_scaffold(conn, problem)
+        _insert_realizations(conn, problem, source_item_id, license_id, cases_by_ref)
+        if "graph" in problem:
+            _insert_representation(conn, problem["id"], PROBLEM_LEVEL_REALIZATION, "graph", problem["graph"])
+        if "grid" in problem:
+            _insert_representation(conn, problem["id"], PROBLEM_LEVEL_REALIZATION, "grid", problem["grid"])
+
+
+def _insert_hint_scaffold(conn: sqlite3.Connection, problem: dict[str, Any]) -> None:
+    scaffold = problem["hint_scaffold"]
+    conn.execute(
+        "INSERT INTO hint_scaffold VALUES (?, ?, ?, ?, ?, ?)",
+        (
+            problem["id"],
+            scaffold["max_safe_hint_level"],
+            scaffold["level_0"],
+            scaffold["level_1"],
+            scaffold["level_2"],
+            scaffold.get("level_3"),
+        ),
+    )
+
+
+def _insert_realizations(
+    conn: sqlite3.Connection,
+    problem: dict[str, Any],
+    source_item_id: str,
+    license_id: str,
+    cases_by_ref: dict[RealizedProblemRef, LinearTemplateCase],
+) -> None:
+    realizations = [("neutral", problem["neutral"])] + list(problem.get("themed", {}).items())
+    for index, (realization_key, realization) in enumerate(realizations):
+        template_case = cases_by_ref[RealizedProblemRef(problem["id"], realization_key)]
+        conn.execute(
+            "INSERT INTO problem_realization VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                problem["id"],
+                realization_key,
+                None if realization_key == "neutral" else realization_key,
+                realization["prompt"],
+                realization["canonical_answer"],
+                realization["solution_method"],
+                _to_json(template_case.params),
+                _to_json(template_case.roles),
+                _to_json(realization["table"]) if "table" in realization else None,
+                _to_json(_realization_extra(realization)),
+                source_item_id,
+                license_id,
+                index,
+            ),
+        )
+        if "table" in realization:
+            _insert_representation(conn, problem["id"], realization_key, "table", realization["table"])
+
+
+def _insert_representation(
+    conn: sqlite3.Connection,
+    problem_id: str,
+    realization_key: str,
+    kind: str,
+    payload: dict[str, Any],
+) -> None:
+    conn.execute(
+        "INSERT INTO representation_payload (problem_item_id, realization_key, kind, payload_json) VALUES (?, ?, ?, ?)",
+        (problem_id, realization_key, kind, _to_json(payload)),
+    )
+
+
+def _export_themes(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    rows = conn.execute("SELECT * FROM theme ORDER BY order_index").fetchall()
+    return [
+        {
+            "id": row["id"],
+            "label": row["label"],
+            "generative_for": json.loads(row["generative_for"]),
+            "mapping_hint": row["mapping_hint"],
+        }
+        for row in rows
+    ]
+
+
+def _export_skills(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    rows = conn.execute("SELECT * FROM skill ORDER BY order_index").fetchall()
+    return [
+        {
+            "id": row["id"],
+            "name": row["name"],
+            "standard_tags": json.loads(row["standard_tags"]),
+            "prerequisites": json.loads(row["prerequisite_skill_ids"]),
+            "description": row["description"],
+        }
+        for row in rows
+    ]
+
+
+def _export_problems(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    problem_rows = conn.execute("SELECT * FROM problem_item ORDER BY order_index").fetchall()
+    return [_export_problem(conn, row) for row in problem_rows]
+
+
+def _export_problem(conn: sqlite3.Connection, row: sqlite3.Row) -> dict[str, Any]:
+    problem: dict[str, Any] = {
+        "id": row["id"],
+        "skill_id": row["skill_id"],
+        "difficulty": row["difficulty"],
+        "answer_type": row["answer_type"],
+        "checker": row["checker"],
+        "representations": json.loads(row["representations"]),
+    }
+    problem.update(json.loads(row["extra_json"]))
+    graph = _payload(conn, row["id"], "graph")
+    if graph is not None:
+        problem["graph"] = graph
+    grid = _payload(conn, row["id"], "grid")
+    if grid is not None:
+        problem["grid"] = grid
+    problem["assessment_role"] = row["assessment_role"]
+
+    realization_rows = conn.execute(
+        "SELECT * FROM problem_realization WHERE problem_item_id = ? ORDER BY order_index",
+        (row["id"],),
+    ).fetchall()
+    themed: dict[str, Any] = {}
+    for realization in realization_rows:
+        exported = {
+            "prompt": realization["prompt"],
+            "canonical_answer": realization["canonical_answer"],
+            "solution_method": realization["solution_method"],
+        }
+        if realization["table_json"]:
+            exported["table"] = json.loads(realization["table_json"])
+        exported.update(json.loads(realization["extra_json"]))
+        if realization["realization_key"] == "neutral":
+            problem["neutral"] = exported
+        else:
+            themed[realization["realization_key"]] = exported
+    problem["themed"] = themed
+    problem["hint_scaffold"] = _export_hint_scaffold(conn, row["id"])
+    return problem
+
+
+def _payload(conn: sqlite3.Connection, problem_id: str, kind: str) -> dict[str, Any] | None:
+    row = conn.execute(
+        "SELECT payload_json FROM representation_payload "
+        "WHERE problem_item_id = ? AND kind = ? AND realization_key = ? ORDER BY id LIMIT 1",
+        (problem_id, kind, PROBLEM_LEVEL_REALIZATION),
+    ).fetchone()
+    return None if row is None else json.loads(row["payload_json"])
+
+
+def _export_hint_scaffold(conn: sqlite3.Connection, problem_id: str) -> dict[str, Any]:
+    row = conn.execute("SELECT * FROM hint_scaffold WHERE problem_item_id = ?", (problem_id,)).fetchone()
+    if row is None:
+        raise ValueError(f"missing hint scaffold for {problem_id}")
+    scaffold = {
+        "max_safe_hint_level": row["max_safe_hint_level"],
+        "level_0": row["level_0"],
+        "level_1": row["level_1"],
+        "level_2": row["level_2"],
+    }
+    if row["level_3"] is not None:
+        scaffold["level_3"] = row["level_3"]
+    return scaffold
+
+
+def _skill_tags(data: dict[str, Any], skill_id: str) -> list[str]:
+    for skill in data.get("skills", []):
+        if skill["id"] == skill_id:
+            return list(skill.get("standard_tags", []))
+    return []
+
+
+def _param_schema(template_case: LinearTemplateCase) -> dict[str, str]:
+    return {key: type(template_case.params[key]).__name__ for key in sorted(template_case.params)}
+
+
+def _problem_extra(problem: dict[str, Any]) -> dict[str, Any]:
+    known = {
+        "id",
+        "skill_id",
+        "difficulty",
+        "answer_type",
+        "checker",
+        "representations",
+        "graph",
+        "grid",
+        "assessment_role",
+        "neutral",
+        "themed",
+        "hint_scaffold",
+    }
+    return {key: value for key, value in problem.items() if key not in known}
+
+
+def _realization_extra(realization: dict[str, Any]) -> dict[str, Any]:
+    known = {"prompt", "canonical_answer", "solution_method", "table"}
+    return {key: value for key, value in realization.items() if key not in known}
+
+
+def _to_json(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
+def _sha256(path: Path) -> str:
+    import hashlib
+
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _insert_promotion(conn: sqlite3.Connection, source_id: str, gold_path: Path) -> None:
+    manifest = build_promotion_manifest(artifact_path=gold_path, provider_runs=[], generated_at="2026-05-31T00:00:00Z")
+    conn.execute(
+        "INSERT INTO content_promotion VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            f"{source_id}:promotion",
+            manifest.artifact_sha256,
+            manifest.generated_at,
+            "ingest_gold_bank",
+            1,
+            manifest.problem_count,
+            manifest.realization_count,
+            1 if manifest.verifier_ok else 0,
+            _to_json(manifest.to_dict()),
+            _to_json([run.__dict__ for run in manifest.provider_runs]),
+        ),
+    )
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="Ingest and export math tutor content artifacts.")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    ingest_parser = subparsers.add_parser("gold", help="Ingest the checked-in gold bank into SQLite.")
+    ingest_parser.add_argument("--input", type=Path, default=DEFAULT_GOLD_PATH)
+    ingest_parser.add_argument("--db", type=Path, required=True)
+    ingest_parser.add_argument("--deployment-mode", choices=[mode.value for mode in DeploymentMode], default=DeploymentMode.FREE_NONCOMMERCIAL.value)
+    ingest_parser.add_argument("--replace", action="store_true", help="Overwrite existing content tables in the target database.")
+
+    export_parser = subparsers.add_parser("export-gold", help="Export a verifier-compatible gold bank from SQLite.")
+    export_parser.add_argument("--db", type=Path, required=True)
+    export_parser.add_argument("--output", type=Path, required=True)
+
+    oer_parser = subparsers.add_parser("oer", help="Stage reviewed OER source metadata into SQLite.")
+    oer_parser.add_argument("--manifest", type=Path, default=DEFAULT_OER_MANIFEST_PATH)
+    oer_parser.add_argument("--db", type=Path, required=True)
+    oer_parser.add_argument("--deployment-mode", choices=[mode.value for mode in DeploymentMode], default=DeploymentMode.FREE_NONCOMMERCIAL.value)
+    oer_parser.add_argument("--replace-sources", action="store_true", help="Replace only sources present in the OER manifest.")
+
+    args = parser.parse_args(argv)
+    if args.command == "gold":
+        summary = ingest_gold_bank(args.input, args.db, deployment_mode=args.deployment_mode, replace=args.replace)
+        print(json.dumps(summary.__dict__, indent=2, sort_keys=True))
+        return
+    if args.command == "export-gold":
+        export_gold_bank(args.db, args.output)
+        print(f"exported gold bank: {args.output}")
+        return
+    if args.command == "oer":
+        summary = ingest_oer_manifest(
+            args.manifest,
+            args.db,
+            deployment_mode=args.deployment_mode,
+            replace_sources=args.replace_sources,
+        )
+        print(json.dumps(summary.__dict__, indent=2, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()

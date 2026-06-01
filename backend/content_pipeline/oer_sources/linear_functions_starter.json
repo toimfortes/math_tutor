@@ -1,0 +1,189 @@
+{
+  "schema_version": "1.0",
+  "description": "Reviewed starter OER source metadata for linear-functions staging. Items are source-alignment records, not runtime tutor problems.",
+  "sources": [
+    {
+      "id": "openstax_college_algebra_2e",
+      "provider": "openstax",
+      "title": "College Algebra 2e",
+      "source_url": "https://openstax.org/details/books/college-algebra-2e",
+      "publisher": "OpenStax / Rice University",
+      "retrieved_at": "2026-05-31T00:00:00Z",
+      "license": {
+        "license_name": "Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International",
+        "license_url": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+        "license_status": "noncommercial_only",
+        "attribution_text": "College Algebra 2e by OpenStax, Rice University, licensed CC BY-NC-SA 4.0.",
+        "commercial_use_allowed": false,
+        "noncommercial_use_allowed": true,
+        "sharealike_required": true,
+        "free_access_required": true,
+        "trademark_restrictions": "OpenStax and Rice University names/logos are not endorsement signals."
+      },
+      "items": [
+        {
+          "external_id": "3-functions",
+          "item_type": "chapter",
+          "grade_band": "high_school_college_bridge",
+          "domain": "linear_functions",
+          "standard_tags": ["CCSS.HSF-IF.A.1", "CCSS.HSF-IF.B.4"],
+          "raw_title": "Chapter 3: Functions",
+          "raw_text": "Reference chapter for function notation, interpreting functions, rates of change, and graph behavior.",
+          "source_url": "https://openstax.org/books/college-algebra-2e/pages/3-introduction-to-functions",
+          "candidate_skill_ids": ["lin_rate_of_change", "lin_evaluate", "lin_interpret_meaning"],
+          "learning_goal": "Connect inputs, outputs, notation, and function behavior."
+        },
+        {
+          "external_id": "3-3-rates-of-change-and-behavior-of-graphs",
+          "item_type": "section",
+          "grade_band": "high_school_college_bridge",
+          "domain": "linear_functions",
+          "standard_tags": ["CCSS.HSF-IF.B.6", "CCSS.8.F.B.4"],
+          "raw_title": "Rates of Change and Behavior of Graphs",
+          "raw_text": "Reference section for average rate of change, increasing/decreasing behavior, and interpreting graph features.",
+          "source_url": "https://openstax.org/books/college-algebra-2e/pages/3-3-rates-of-change-and-behavior-of-graphs",
+          "candidate_skill_ids": ["lin_rate_of_change", "lin_slope_two_points", "lin_slope_from_graph"],
+          "learning_goal": "Interpret slope/rate of change from points, tables, and graphs."
+        },
+        {
+          "external_id": "2-1-linear-equations-in-one-variable",
+          "item_type": "section",
+          "grade_band": "high_school_college_bridge",
+          "domain": "linear_functions",
+          "standard_tags": ["CCSS.HSA-REI.B.3"],
+          "raw_title": "Linear Equations in One Variable",
+          "raw_text": "Reference section for solving linear equations that can support solve-for-input skills.",
+          "source_url": "https://openstax.org/books/college-algebra-2e/pages/2-1-linear-equations-in-one-variable",
+          "candidate_skill_ids": ["lin_solve_for_input"],
+          "learning_goal": "Solve a linear equation for the unknown input."
+        },
+        {
+          "external_id": "2-2-linear-inequalities-in-one-variable",
+          "item_type": "section",
+          "grade_band": "high_school_college_bridge",
+          "domain": "linear_functions",
+          "standard_tags": ["CCSS.HSA-REI.B.3"],
+          "raw_title": "Linear Inequalities in One Variable",
+          "raw_text": "Reference section for later inequality templates; staged but not bound to the v1 runtime bank.",
+          "source_url": "https://openstax.org/books/college-algebra-2e/pages/2-2-linear-inequalities-in-one-variable",
+          "candidate_skill_ids": [],
+          "learning_goal": "Prepare future inequality templates."
+        }
+      ]
+    },
+    {
+      "id": "illustrative_math_grade_8_unit_5",
+      "provider": "illustrative_mathematics",
+      "title": "Grade 8 Unit 5: Functions and Volume",
+      "source_url": "https://curriculum.illustrativemathematics.org/MS/teachers/3/5/index.html",
+      "publisher": "Illustrative Mathematics",
+      "retrieved_at": "2026-05-31T00:00:00Z",
+      "license": {
+        "license_name": "Creative Commons Attribution 4.0 International / edition-specific IM license record",
+        "license_url": "https://illustrativemathematics.org/site-ip-content/",
+        "license_status": "commercial_ok",
+        "attribution_text": "Illustrative Mathematics Grade 8 Unit 5 source metadata; verify edition-specific attribution before runtime publication.",
+        "commercial_use_allowed": true,
+        "noncommercial_use_allowed": true,
+        "sharealike_required": false,
+        "free_access_required": false,
+        "trademark_restrictions": "Illustrative Mathematics trademarks are excluded; do not imply endorsement."
+      },
+      "items": [
+        {
+          "external_id": "lesson_7_connecting_representations",
+          "item_type": "lesson",
+          "grade_band": "8",
+          "domain": "linear_functions",
+          "standard_tags": ["CCSS.8.F.A.1", "CCSS.8.F.B.4"],
+          "raw_title": "Lesson 7: Connecting Representations of Functions",
+          "raw_text": "Lesson alignment record for connecting tables, equations, graphs, and function descriptions.",
+          "source_url": "https://curriculum.illustrativemathematics.org/MS/teachers/3/5/7/index.html",
+          "candidate_skill_ids": ["lin_rate_of_change", "lin_slope_from_graph", "lin_equation_slope_intercept"],
+          "learning_goal": "Connect multiple representations of a function."
+        },
+        {
+          "external_id": "lesson_8_linear_functions",
+          "item_type": "lesson",
+          "grade_band": "8",
+          "domain": "linear_functions",
+          "standard_tags": ["CCSS.8.F.B.4", "CCSS.HSF-IF.B.6"],
+          "raw_title": "Lesson 8: Linear Functions",
+          "raw_text": "Lesson alignment record for linear functions, proportional relationships, slope, and rate of change.",
+          "source_url": "https://curriculum.illustrativemathematics.org/MS/teachers/3/5/8/index.html",
+          "candidate_skill_ids": ["lin_rate_of_change", "lin_slope_two_points"],
+          "learning_goal": "Understand linear functions as functions with a constant rate of change."
+        },
+        {
+          "external_id": "lesson_9_linear_models",
+          "item_type": "lesson",
+          "grade_band": "8",
+          "domain": "linear_functions",
+          "standard_tags": ["CCSS.8.F.B.4", "CCSS.HSF-LE.A.2"],
+          "raw_title": "Lesson 9: Linear Models",
+          "raw_text": "Lesson alignment record for modeling situations with linear relationships.",
+          "source_url": "https://curriculum.illustrativemathematics.org/MS/teachers/3/5/9/index.html",
+          "candidate_skill_ids": ["lin_equation_slope_intercept", "lin_evaluate", "lin_interpret_meaning"],
+          "learning_goal": "Use linear functions to model real-world situations."
+        }
+      ]
+    },
+    {
+      "id": "oer_commons_linear_functions_discovery",
+      "provider": "oer_commons",
+      "title": "OER Commons Linear Functions Discovery Set",
+      "source_url": "https://oercommons.org/",
+      "publisher": "ISKME / OER Commons",
+      "retrieved_at": "2026-05-31T00:00:00Z",
+      "license": {
+        "license_name": "OER Commons item-level Creative Commons license metadata",
+        "license_url": "https://help.oercommons.org/support/solutions/articles/42000046845-usage-rights",
+        "license_status": "noncommercial_only",
+        "attribution_text": "OER Commons discovery metadata; individual resources require item-level attribution before promotion.",
+        "commercial_use_allowed": false,
+        "noncommercial_use_allowed": true,
+        "sharealike_required": true,
+        "free_access_required": true,
+        "trademark_restrictions": "OER Commons provider name is not an endorsement signal."
+      },
+      "items": [
+        {
+          "external_id": "search_linear_functions_cc",
+          "item_type": "discovery_query",
+          "grade_band": "6-12",
+          "domain": "linear_functions",
+          "standard_tags": ["CCSS.8.F.B.4"],
+          "raw_title": "Linear functions OER Commons discovery query",
+          "raw_text": "Discovery query for CC-licensed linear-functions materials. Specific resources must be reviewed item-by-item before problem binding.",
+          "source_url": "https://oercommons.org/search?f.search=linear%20functions",
+          "candidate_skill_ids": ["lin_rate_of_change", "lin_slope_two_points", "lin_equation_slope_intercept"],
+          "learning_goal": "Find candidate openly licensed resources for linear functions."
+        },
+        {
+          "external_id": "search_slope_rate_of_change_cc",
+          "item_type": "discovery_query",
+          "grade_band": "6-12",
+          "domain": "linear_functions",
+          "standard_tags": ["CCSS.8.F.B.4", "CCSS.HSF-IF.B.6"],
+          "raw_title": "Slope and rate of change OER Commons discovery query",
+          "raw_text": "Discovery query for CC-licensed slope and rate-of-change resources. Specific resources must be reviewed item-by-item before problem binding.",
+          "source_url": "https://oercommons.org/search?f.search=slope%20rate%20of%20change",
+          "candidate_skill_ids": ["lin_rate_of_change", "lin_slope_from_graph", "lin_slope_two_points"],
+          "learning_goal": "Find candidate resources for slope and rate-of-change remediation."
+        },
+        {
+          "external_id": "search_linear_models_cc",
+          "item_type": "discovery_query",
+          "grade_band": "6-12",
+          "domain": "linear_functions",
+          "standard_tags": ["CCSS.HSF-LE.A.2"],
+          "raw_title": "Linear models OER Commons discovery query",
+          "raw_text": "Discovery query for CC-licensed linear-model resources. Specific resources must be reviewed item-by-item before problem binding.",
+          "source_url": "https://oercommons.org/search?f.search=linear%20models%20math",
+          "candidate_skill_ids": ["lin_equation_slope_intercept", "lin_interpret_meaning"],
+          "learning_goal": "Find candidate resources for linear modeling contexts."
+        }
+      ]
+    }
+  ]
+}

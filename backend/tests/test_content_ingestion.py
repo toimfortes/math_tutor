@@ -1,0 +1,245 @@
+from __future__ import annotations
+
+import json
+import sqlite3
+
+from backend.app.content.seed_loader import DEFAULT_GOLD_PATH
+from backend.content_pipeline.ingest import (
+    DeploymentMode,
+    DEFAULT_OER_MANIFEST_PATH,
+    connect_content_db,
+    export_gold_bank,
+    ingest_oer_manifest,
+    ingest_gold_bank,
+    is_license_allowed,
+)
+from backend.content_pipeline.verify import verify_frozen_gold_bank
+
+
+def test_ingest_gold_bank_populates_content_tables(tmp_path):
+    db_path = tmp_path / "content.sqlite3"
+
+    summary = ingest_gold_bank(DEFAULT_GOLD_PATH, db_path, deployment_mode=DeploymentMode.FREE_NONCOMMERCIAL)
+
+    assert summary.problem_count == 16
+    assert summary.realization_count == 48
+    assert summary.skill_count == 8
+    assert summary.theme_count == 2
+    assert summary.license_status == "internal_gold"
+
+    with connect_content_db(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        counts = {
+            table: conn.execute(f"SELECT COUNT(*) AS count FROM {table}").fetchone()["count"]
+            for table in (
+                "content_source",
+                "content_license",
+                "source_item",
+                "skill",
+                "theme",
+                "problem_item",
+                "problem_realization",
+                "hint_scaffold",
+                "representation_payload",
+            )
+        }
+        p03_drone = conn.execute(
+            "SELECT canonical_answer, prompt FROM problem_realization "
+            "WHERE problem_item_id = ? AND realization_key = ?",
+            ("lf_p03", "drone_physics"),
+        ).fetchone()
+
+    assert counts == {
+        "content_source": 1,
+        "content_license": 1,
+        "source_item": 16,
+        "skill": 8,
+        "theme": 2,
+        "problem_item": 16,
+        "problem_realization": 48,
+        "hint_scaffold": 16,
+        "representation_payload": 14,
+    }
+    assert p03_drone["canonical_answer"] == "-10"
+    assert "velocity" in p03_drone["prompt"].lower()
+
+
+def test_exported_gold_bank_round_trips_through_existing_verifier(tmp_path):
+    db_path = tmp_path / "content.sqlite3"
+    exported_path = tmp_path / "linear_functions.exported.json"
+    ingest_gold_bank(DEFAULT_GOLD_PATH, db_path, deployment_mode=DeploymentMode.FREE_NONCOMMERCIAL)
+
+    export_gold_bank(db_path, exported_path)
+
+    original = json.loads(DEFAULT_GOLD_PATH.read_text())
+    exported = json.loads(exported_path.read_text())
+    assert exported == original
+    assert verify_frozen_gold_bank(exported_path).ok
+
+
+def test_license_gate_allows_noncommercial_only_only_in_free_mode():
+    assert is_license_allowed("noncommercial_only", DeploymentMode.FREE_NONCOMMERCIAL)
+    assert not is_license_allowed("noncommercial_only", DeploymentMode.COMMERCIAL)
+    assert not is_license_allowed("permission_required", DeploymentMode.FREE_NONCOMMERCIAL)
+    assert not is_license_allowed("excluded", DeploymentMode.FREE_NONCOMMERCIAL)
+
+
+def test_content_connection_enforces_foreign_keys(tmp_path):
+    db_path = tmp_path / "content.sqlite3"
+    ingest_gold_bank(DEFAULT_GOLD_PATH, db_path, deployment_mode=DeploymentMode.FREE_NONCOMMERCIAL)
+
+    with connect_content_db(db_path) as conn:
+        assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+        try:
+            conn.execute(
+                "INSERT INTO problem_realization VALUES "
+                "('missing-problem', 'neutral', NULL, 'prompt', 'answer', 'method', '{}', '{}', NULL, '{}', "
+                "'missing-source', 'missing-license', 0)"
+            )
+        except sqlite3.IntegrityError:
+            pass
+        else:
+            raise AssertionError("dangling realization insert should violate foreign keys")
+
+
+def test_ingest_refuses_to_replace_existing_database_without_explicit_flag(tmp_path):
+    db_path = tmp_path / "content.sqlite3"
+    ingest_gold_bank(DEFAULT_GOLD_PATH, db_path, deployment_mode=DeploymentMode.FREE_NONCOMMERCIAL)
+
+    try:
+        ingest_gold_bank(DEFAULT_GOLD_PATH, db_path, deployment_mode=DeploymentMode.FREE_NONCOMMERCIAL)
+    except ValueError as exc:
+        assert "already contains content" in str(exc)
+    else:
+        raise AssertionError("second ingest should require replace=True")
+
+    summary = ingest_gold_bank(
+        DEFAULT_GOLD_PATH,
+        db_path,
+        deployment_mode=DeploymentMode.FREE_NONCOMMERCIAL,
+        replace=True,
+    )
+    assert summary.problem_count == 16
+
+
+def test_export_does_not_depend_on_raw_source_json_blob(tmp_path):
+    db_path = tmp_path / "content.sqlite3"
+    exported_path = tmp_path / "linear_functions.exported.json"
+    ingest_gold_bank(DEFAULT_GOLD_PATH, db_path, deployment_mode=DeploymentMode.FREE_NONCOMMERCIAL)
+
+    with connect_content_db(db_path) as conn:
+        conn.execute("UPDATE content_source SET raw_json = ?", (json.dumps({"corrupted": True}),))
+
+    export_gold_bank(db_path, exported_path)
+
+    assert json.loads(exported_path.read_text()) == json.loads(DEFAULT_GOLD_PATH.read_text())
+
+
+def test_problem_level_representation_payloads_are_not_duplicated_per_realization(tmp_path):
+    db_path = tmp_path / "content.sqlite3"
+    ingest_gold_bank(DEFAULT_GOLD_PATH, db_path, deployment_mode=DeploymentMode.FREE_NONCOMMERCIAL)
+
+    with connect_content_db(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        by_kind = {
+            row["kind"]: row["count"]
+            for row in conn.execute(
+                "SELECT kind, COUNT(*) AS count FROM representation_payload GROUP BY kind"
+            ).fetchall()
+        }
+        non_problem_level_graphs = conn.execute(
+            "SELECT COUNT(*) FROM representation_payload WHERE kind IN ('graph', 'grid') AND realization_key != ?",
+            ("__problem__",),
+        ).fetchone()[0]
+
+    assert by_kind == {"graph": 7, "grid": 1, "table": 6}
+    assert non_problem_level_graphs == 0
+
+
+def test_ingest_records_promotion_provenance(tmp_path):
+    db_path = tmp_path / "content.sqlite3"
+
+    ingest_gold_bank(DEFAULT_GOLD_PATH, db_path, deployment_mode=DeploymentMode.FREE_NONCOMMERCIAL)
+
+    with connect_content_db(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        promotion = conn.execute("SELECT * FROM content_promotion").fetchone()
+
+    assert promotion["artifact_sha256"]
+    assert len(promotion["artifact_sha256"]) == 64
+    assert promotion["verifier_ok"] == 1
+    assert promotion["problem_count"] == 16
+    assert promotion["realization_count"] == 48
+
+
+def test_ingest_records_real_template_bindings(tmp_path):
+    db_path = tmp_path / "content.sqlite3"
+
+    ingest_gold_bank(DEFAULT_GOLD_PATH, db_path, deployment_mode=DeploymentMode.FREE_NONCOMMERCIAL)
+
+    with connect_content_db(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        template = conn.execute("SELECT * FROM template WHERE id = ?", ("linear_functions:lf_p04",)).fetchone()
+        realization = conn.execute(
+            "SELECT param_values, semantic_roles FROM problem_realization "
+            "WHERE problem_item_id = ? AND realization_key = ?",
+            ("lf_p04", "neutral"),
+        ).fetchone()
+
+    assert template["template_kind"] == "slope_two_points"
+    assert json.loads(template["param_schema"]) == {"x1": "int", "x2": "int", "y1": "int", "y2": "int"}
+    assert json.loads(realization["param_values"]) == {"x1": 1, "x2": 5, "y1": 4, "y2": 16}
+    assert json.loads(realization["semantic_roles"])["y2"] == "second output"
+
+
+def test_ingest_oer_manifest_appends_staged_sources_without_touching_runtime_bank(tmp_path):
+    db_path = tmp_path / "content.sqlite3"
+    ingest_gold_bank(DEFAULT_GOLD_PATH, db_path, deployment_mode=DeploymentMode.FREE_NONCOMMERCIAL)
+
+    summary = ingest_oer_manifest(DEFAULT_OER_MANIFEST_PATH, db_path, deployment_mode=DeploymentMode.FREE_NONCOMMERCIAL)
+
+    assert summary.source_count == 3
+    assert summary.item_count == 10
+    assert summary.license_statuses == ["commercial_ok", "noncommercial_only"]
+
+    with connect_content_db(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        counts = {
+            table: conn.execute(f"SELECT COUNT(*) AS count FROM {table}").fetchone()["count"]
+            for table in ("content_source", "content_license", "source_item", "problem_item", "problem_realization")
+        }
+        statuses = {
+            row["ingestion_status"]
+            for row in conn.execute(
+                "SELECT ingestion_status FROM source_item WHERE source_id != ?",
+                ("gold_linear_functions",),
+            ).fetchall()
+        }
+        im_item = conn.execute(
+            "SELECT raw_title, standard_tags, raw_json FROM source_item WHERE id = ?",
+            ("illustrative_math_grade_8_unit_5:lesson_8_linear_functions",),
+        ).fetchone()
+
+    assert counts == {
+        "content_source": 4,
+        "content_license": 4,
+        "source_item": 26,
+        "problem_item": 16,
+        "problem_realization": 48,
+    }
+    assert statuses == {"staged_oer"}
+    assert im_item["raw_title"] == "Lesson 8: Linear Functions"
+    assert "CCSS.8.F.B.4" in json.loads(im_item["standard_tags"])
+    assert json.loads(im_item["raw_json"])["candidate_skill_ids"] == ["lin_rate_of_change", "lin_slope_two_points"]
+
+
+def test_oer_manifest_honors_deployment_license_gate(tmp_path):
+    db_path = tmp_path / "content.sqlite3"
+    ingest_gold_bank(DEFAULT_GOLD_PATH, db_path, deployment_mode=DeploymentMode.FREE_NONCOMMERCIAL)
+
+    try:
+        ingest_oer_manifest(DEFAULT_OER_MANIFEST_PATH, db_path, deployment_mode=DeploymentMode.COMMERCIAL)
+    except ValueError as exc:
+        assert "noncommercial_only" in str(exc)
+    else:
+        raise AssertionError("noncommercial OER sources should not import under commercial mode")
