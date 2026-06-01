@@ -9,11 +9,55 @@ from backend.content_pipeline.ingest import (
     DEFAULT_OER_MANIFEST_PATH,
     connect_content_db,
     export_gold_bank,
+    generate_candidates,
     ingest_oer_manifest,
     ingest_gold_bank,
     is_license_allowed,
 )
 from backend.content_pipeline.verify import verify_frozen_gold_bank
+
+
+def test_generate_candidates_stages_gated_problems_without_promoting_them(tmp_path):
+    db_path = tmp_path / "content.sqlite3"
+    export_path = tmp_path / "linear_functions.exported.json"
+    ingest_gold_bank(DEFAULT_GOLD_PATH, db_path, deployment_mode=DeploymentMode.FREE_NONCOMMERCIAL)
+    ingest_oer_manifest(DEFAULT_OER_MANIFEST_PATH, db_path, deployment_mode=DeploymentMode.FREE_NONCOMMERCIAL)
+
+    summary = generate_candidates(db_path, per_skill=5)
+
+    assert summary.total_created == sum(summary.created_by_skill.values())
+    assert summary.total_created > 0
+
+    with connect_content_db(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        statuses = dict(conn.execute("SELECT curation_status, COUNT(*) FROM problem_item GROUP BY curation_status").fetchall())
+        assert statuses["promoted"] == 16  # gold runtime bank untouched
+        assert statuses["candidate"] == summary.total_created
+        orphan = conn.execute(
+            "SELECT COUNT(*) FROM problem_item pi "
+            "WHERE pi.curation_status = 'candidate' "
+            "AND pi.source_item_id NOT IN (SELECT id FROM source_item WHERE ingestion_status = 'staged_oer')"
+        ).fetchone()[0]
+        assert orphan == 0  # every candidate is provenance-linked to a staged source item
+
+    export_gold_bank(db_path, export_path)
+    exported = json.loads(export_path.read_text())
+    assert len(exported["problems"]) == 16  # candidates excluded from the runtime bank
+    assert verify_frozen_gold_bank(export_path).ok is True
+
+
+def test_generate_candidates_is_idempotent(tmp_path):
+    db_path = tmp_path / "content.sqlite3"
+    ingest_gold_bank(DEFAULT_GOLD_PATH, db_path, deployment_mode=DeploymentMode.FREE_NONCOMMERCIAL)
+    ingest_oer_manifest(DEFAULT_OER_MANIFEST_PATH, db_path, deployment_mode=DeploymentMode.FREE_NONCOMMERCIAL)
+
+    first = generate_candidates(db_path, per_skill=4)
+    second = generate_candidates(db_path, per_skill=4)
+
+    assert first.total_created == second.total_created
+    with connect_content_db(db_path) as conn:
+        count = conn.execute("SELECT COUNT(*) FROM problem_item WHERE curation_status = 'candidate'").fetchone()[0]
+        assert count == second.total_created  # re-running replaced, did not duplicate
 
 
 def test_ingest_gold_bank_populates_content_tables(tmp_path):

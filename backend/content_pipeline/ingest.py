@@ -9,6 +9,7 @@ import sqlite3
 from typing import Any
 
 from backend.app.content.seed_loader import DEFAULT_GOLD_PATH, RealizedProblemRef
+from backend.content_pipeline.candidate_generation import GENERATORS, generate_validated_candidates
 from backend.content_pipeline.provenance import build_promotion_manifest
 from backend.content_pipeline.templates.linear_functions import LINEAR_FUNCTION_TEMPLATE_CASES, LinearTemplateCase
 
@@ -41,6 +42,14 @@ class OerIngestionSummary:
     source_count: int
     item_count: int
     license_statuses: list[str]
+
+
+@dataclass(frozen=True)
+class CandidateGenerationSummary:
+    db_path: str
+    per_skill: int
+    created_by_skill: dict[str, int]
+    total_created: int
 
 
 PROBLEM_LEVEL_REALIZATION = "__problem__"
@@ -309,6 +318,127 @@ def export_gold_bank(db_path: Path | str, output_path: Path | str) -> None:
         }
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(base, indent=2, ensure_ascii=False) + "\n")
+
+
+def generate_candidates(
+    db_path: Path | str = Path("content.sqlite3"),
+    *,
+    per_skill: int = 5,
+) -> CandidateGenerationSummary:
+    """Generate gated, deterministic problem candidates from staged source items.
+
+    For each generatable skill that a staged OER item aligns to, produce
+    `per_skill` validated candidates and store them as problem_item rows with
+    curation_status='candidate', linked to the source item for provenance. These
+    are NOT promoted: the export-gold runtime bank ignores them.
+    """
+    db_path = Path(db_path)
+    with connect_content_db(db_path) as conn:
+        conn.executescript(SCHEMA)
+        conn.row_factory = sqlite3.Row
+
+        existing_skills = {row[0] for row in conn.execute("SELECT id FROM skill")}
+        provenance: dict[str, tuple[str, str]] = {}
+        for row in conn.execute(
+            "SELECT id, raw_json, license_id FROM source_item WHERE ingestion_status = 'staged_oer'"
+        ).fetchall():
+            raw = json.loads(row["raw_json"])
+            for skill_id in raw.get("candidate_skill_ids", []):
+                if skill_id in GENERATORS and skill_id in existing_skills and skill_id not in provenance:
+                    provenance[skill_id] = (row["id"], row["license_id"])
+
+        _clear_candidates(conn)
+        base_order = conn.execute("SELECT COALESCE(MAX(order_index), -1) FROM problem_item").fetchone()[0] + 1
+        order = base_order
+        created: dict[str, int] = {}
+
+        for skill_id, (source_item_id, license_id) in sorted(provenance.items()):
+            spec = GENERATORS[skill_id]
+            template_id = f"candidate_template:{skill_id}"
+            conn.execute(
+                "INSERT OR IGNORE INTO template VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    template_id,
+                    skill_id,
+                    "linear_functions",
+                    spec.kind,
+                    spec.answer_type,
+                    spec.checker,
+                    "{}",
+                    "backend.content_pipeline.candidate_generation.generate_candidate",
+                    "backend.app.domain.diagnostic_catalog",
+                ),
+            )
+            candidates = generate_validated_candidates(skill_id, per_skill)
+            for position, candidate in enumerate(candidates):
+                problem_id = f"candidate:{skill_id}:{position}"
+                conn.execute(
+                    "INSERT INTO problem_item VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        problem_id,
+                        template_id,
+                        skill_id,
+                        2,
+                        candidate.answer_type,
+                        candidate.checker,
+                        _to_json(["text"]),
+                        "practice",
+                        source_item_id,
+                        "candidate",
+                        _to_json({"generated": True, "params": candidate.params, "known_wrong_answers": candidate.known_wrong}),
+                        order,
+                    ),
+                )
+                scaffold = candidate.hint_scaffold
+                conn.execute(
+                    "INSERT INTO hint_scaffold VALUES (?, ?, ?, ?, ?, ?)",
+                    (
+                        problem_id,
+                        scaffold["max_safe_hint_level"],
+                        scaffold["level_0"],
+                        scaffold["level_1"],
+                        scaffold["level_2"],
+                        scaffold.get("level_3"),
+                    ),
+                )
+                conn.execute(
+                    "INSERT INTO problem_realization VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        problem_id,
+                        "neutral",
+                        None,
+                        candidate.prompt,
+                        candidate.canonical_answer,
+                        "",
+                        _to_json(candidate.params),
+                        _to_json({}),
+                        None,
+                        _to_json({}),
+                        source_item_id,
+                        license_id,
+                        0,
+                    ),
+                )
+                order += 1
+            created[skill_id] = len(candidates)
+
+        conn.commit()
+
+    return CandidateGenerationSummary(
+        db_path=str(db_path),
+        per_skill=per_skill,
+        created_by_skill=created,
+        total_created=sum(created.values()),
+    )
+
+
+def _clear_candidates(conn: sqlite3.Connection) -> None:
+    candidate_ids = [row[0] for row in conn.execute("SELECT id FROM problem_item WHERE curation_status = 'candidate'")]
+    for problem_id in candidate_ids:
+        conn.execute("DELETE FROM problem_realization WHERE problem_item_id = ?", (problem_id,))
+        conn.execute("DELETE FROM hint_scaffold WHERE problem_item_id = ?", (problem_id,))
+        conn.execute("DELETE FROM representation_payload WHERE problem_item_id = ?", (problem_id,))
+    conn.execute("DELETE FROM problem_item WHERE curation_status = 'candidate'")
 
 
 def _reset_tables(conn: sqlite3.Connection) -> None:
@@ -644,7 +774,12 @@ def _export_skills(conn: sqlite3.Connection) -> list[dict[str, Any]]:
 
 
 def _export_problems(conn: sqlite3.Connection) -> list[dict[str, Any]]:
-    problem_rows = conn.execute("SELECT * FROM problem_item ORDER BY order_index").fetchall()
+    # Only promoted problems reach the runtime bank. Generated candidates
+    # (curation_status='candidate') are deliberately excluded until a separate,
+    # gated promotion step reviews them.
+    problem_rows = conn.execute(
+        "SELECT * FROM problem_item WHERE curation_status = 'promoted' ORDER BY order_index"
+    ).fetchall()
     return [_export_problem(conn, row) for row in problem_rows]
 
 
@@ -800,6 +935,12 @@ def main(argv: list[str] | None = None) -> None:
     oer_parser.add_argument("--deployment-mode", choices=[mode.value for mode in DeploymentMode], default=DeploymentMode.FREE_NONCOMMERCIAL.value)
     oer_parser.add_argument("--replace-sources", action="store_true", help="Replace only sources present in the OER manifest.")
 
+    candidates_parser = subparsers.add_parser(
+        "generate-candidates", help="Generate gated candidate problems from staged source alignment (not promoted)."
+    )
+    candidates_parser.add_argument("--db", type=Path, required=True)
+    candidates_parser.add_argument("--per-skill", type=int, default=5)
+
     args = parser.parse_args(argv)
     if args.command == "gold":
         summary = ingest_gold_bank(args.input, args.db, deployment_mode=args.deployment_mode, replace=args.replace)
@@ -816,6 +957,10 @@ def main(argv: list[str] | None = None) -> None:
             deployment_mode=args.deployment_mode,
             replace_sources=args.replace_sources,
         )
+        print(json.dumps(summary.__dict__, indent=2, sort_keys=True))
+        return
+    if args.command == "generate-candidates":
+        summary = generate_candidates(args.db, per_skill=args.per_skill)
         print(json.dumps(summary.__dict__, indent=2, sort_keys=True))
 
 

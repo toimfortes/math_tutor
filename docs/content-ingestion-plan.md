@@ -312,10 +312,13 @@ Implemented starter commands:
 ```bash
 python -m backend.content_pipeline.ingest gold --db /tmp/content.sqlite3
 python -m backend.content_pipeline.ingest oer --db /tmp/content.sqlite3
+python -m backend.content_pipeline.ingest generate-candidates --db /tmp/content.sqlite3 --per-skill 5
 python -m backend.content_pipeline.ingest export-gold --db /tmp/content.sqlite3 --output /tmp/linear_functions.json
 ```
 
 The OER command stages reviewed metadata from `backend/content_pipeline/oer_sources/linear_functions_starter.json`. It appends `content_source`, `content_license`, and `source_item` rows with `ingestion_status='staged_oer'`; it does not create runtime `problem_item` or `problem_realization` rows. This preserves the boundary that OER material informs skill alignment and template authoring but is not shown to learners until it is converted into deterministic, verified tutor-native content.
+
+`generate-candidates` implements Stage 4 (template binding) for skills that have a deterministic generator (`backend/content_pipeline/candidate_generation.py`). For each generatable skill a staged OER item aligns to, it produces parametric problems, validates each through the same gates as the runtime bank (deterministic solver result, code-owned checker round-trip, content safety scan, no answer leak), and stores the survivors as `problem_item` rows with `curation_status='candidate'`, provenance-linked to the staged source item. Candidates are **not** promoted: `export-gold` only emits `curation_status='promoted'` problems, so generated content never reaches the runtime bank until a deliberate, verifier-backed promotion step (Stage 6).
 
 ## Supplemental Video Recommendation Catalog
 
