@@ -8,8 +8,8 @@ import { PracticePanel } from "./PracticePanel";
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const PROBLEMS: PracticeProblem[] = [
-  { id: "candidate:lin_evaluate:0", skillId: "lin_evaluate", prompt: "For y = 2x + 1, find y when x = 3.", answerType: "numeric", representations: ["text"], difficulty: 2 },
-  { id: "candidate:lin_evaluate:1", skillId: "lin_evaluate", prompt: "For y = 3x + 2, find y when x = 4.", answerType: "numeric", representations: ["text"], difficulty: 3 },
+  { id: "candidate:lin_evaluate:0", skillId: "lin_evaluate", prompt: "For y = 2x + 1, find y when x = 3.", answerType: "numeric", representations: ["text"], difficulty: 2, review: false },
+  { id: "candidate:lin_evaluate:1", skillId: "lin_evaluate", prompt: "For y = 3x + 2, find y when x = 4.", answerType: "numeric", representations: ["text"], difficulty: 3, review: false },
 ];
 
 describe("PracticePanel", () => {
@@ -71,5 +71,16 @@ describe("PracticePanel", () => {
   it("renders an empty-state message when there is no practice", () => {
     const container = render(<PracticePanel problems={[]} onCheck={vi.fn()} />);
     expect(container.textContent).toContain("No extra practice");
+  });
+
+  it("shows a Review badge only for review-due problems", () => {
+    const problems: PracticeProblem[] = [
+      { id: "due", skillId: "lin_evaluate", prompt: "due prompt", answerType: "numeric", representations: ["text"], difficulty: 2, review: true },
+      { id: "fresh", skillId: "lin_slope", prompt: "fresh prompt", answerType: "numeric", representations: ["text"], difficulty: 2, review: false },
+    ];
+    const container = render(<PracticePanel problems={problems} onCheck={vi.fn()} />);
+    const eyebrows = Array.from(container.querySelectorAll(".eyebrow"));
+    expect(eyebrows[0].textContent).toContain("Review");
+    expect(eyebrows[1].textContent).not.toContain("Review");
   });
 });

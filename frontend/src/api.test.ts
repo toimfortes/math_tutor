@@ -1,5 +1,24 @@
 import { describe, expect, it, vi } from "vitest";
-import { getStudentState, recordRetention, recordTransfer, skipProblem, startSession, submitTurn } from "./api";
+import { getPracticeProblems, getStudentState, recordRetention, recordTransfer, skipProblem, startSession, submitTurn } from "./api";
+
+describe("getPracticeProblems mapping", () => {
+  it("maps review and defaults a missing review key to false", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          problems: [
+            { id: "due", skill_id: "lin_evaluate", prompt: "p", answer_type: "numeric", representations: ["text"], difficulty: 2, review: true },
+            { id: "no-key", skill_id: "lin_evaluate", prompt: "q", answer_type: "numeric", representations: ["text"], difficulty: 2 },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    const problems = await getPracticeProblems(fetchMock, "test-token");
+    expect(problems[0].review).toBe(true);
+    expect(problems[1].review).toBe(false); // missing key -> coerced false
+  });
+});
 
 function problem(prompt: string, problemId: string) {
   return {

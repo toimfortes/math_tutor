@@ -70,8 +70,17 @@ rather than counting a warmed-up assessment retry as a cold first attempt). The
 calibration cohort is thus cold, non-practice first attempts — closing the
 selection-bias loop on the offline-reader end.
 
+## UI surfacing
+The review signal is made visible: `/practice/problems` annotates each returned dict
+with a per-request `review` boolean (`problem["skill_id"] in due_set`, set in
+`_adaptive_practice_order` after ordering — request-private dicts, no static field).
+The frontend `PracticeProblem` carries `review` (mapped `?? false`), and `PracticePanel`
+renders a "· Review" chip in the eyebrow for review-due problems, alongside the existing
+"Level N". Flagged by skill (the unit of review), so a due skill's non-promoted problems
+are also labelled. Fresh students (no due skills) see no badges — UI identical to before.
+
 ## Deferred
 Cross-skill interleaving of the non-due practice list; single next-item endpoint; an
 A/B-validated band target for linear functions; per-skill forgetting curves / bandits;
 stronger (N-corrects) mastery for review eligibility; random-exposure calibration
-cohort; a "Review due" UI badge.
+cohort; an "At your level" target-band indicator.

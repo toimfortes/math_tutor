@@ -45,6 +45,10 @@ select {
   text-transform: uppercase;
 }
 
+.badge-review {
+  color: #b45309; /* amber accent: a lapsed skill due for retrieval practice */
+}
+
 h1,
 h2 {
   margin: 0;

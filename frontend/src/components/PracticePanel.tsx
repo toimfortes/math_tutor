@@ -47,6 +47,7 @@ export function PracticePanel({
           <div key={problem.id} className="practice-item">
             <p className="eyebrow">
               {problem.skillId} · Level {problem.difficulty}
+              {problem.review ? <span className="badge-review"> · Review</span> : null}
             </p>
             <p>
               <MathText text={problem.prompt} />

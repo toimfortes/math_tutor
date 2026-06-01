@@ -137,6 +137,7 @@ export type PracticeProblem = {
   answerType: string;
   representations: string[];
   difficulty: number;
+  review: boolean;
 };
 
 export async function getPracticeProblems(fetcher: FetchLike, authToken: string): Promise<PracticeProblem[]> {
@@ -152,6 +153,7 @@ export async function getPracticeProblems(fetcher: FetchLike, authToken: string)
     answerType: problem.answer_type,
     representations: problem.representations ?? [],
     difficulty: problem.difficulty ?? 3,
+    review: problem.review ?? false,
   }));
 }
 

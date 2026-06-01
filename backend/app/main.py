@@ -229,7 +229,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             interval_seconds=DEFAULT_INTERVAL_SECONDS,
         )
         due_skills = [item.skill_id for item in due.get(student_id, [])]
-        return order_for_student(problems, targets, due_skills)
+        ordered = order_for_student(problems, targets, due_skills)
+        # Per-request annotation so the UI can badge review-due skills. Pure, derived
+        # from due_skills; the dicts are request-private (public_problems rebuilds them).
+        due_set = set(due_skills)
+        for problem in ordered:
+            problem["review"] = problem["skill_id"] in due_set
+        return ordered
 
     @app.post("/practice/check")
     def practice_check(request: PracticeCheckRequest, student_id: str = Depends(require_auth_token)) -> dict:

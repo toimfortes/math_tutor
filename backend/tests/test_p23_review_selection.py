@@ -197,6 +197,39 @@ def test_recently_mastered_skill_is_not_promoted(tmp_path):
     assert problems[0]["id"] == "a1"  # nothing promoted -> easiest-first base (A band 1)
 
 
+def test_review_flag_marks_due_skill_problems(tmp_path):
+    now = 100 * DAY
+    items = [("a1", "A", 1, "1"), ("b1", "B", 1, "2"), ("b2", "B", 2, "3")]
+    client, session_db = _client(tmp_path, items, now=now)
+    auth = _auth(client)
+    _seed(session_db, "ada", [("practice:ada", "B", "b1", "correct", now - 5 * DAY)])  # B lapsed
+    problems = client.get("/practice/problems", headers=auth).json()["problems"]
+    by_id = {p["id"]: p for p in problems}
+    assert by_id["b1"]["review"] is True and by_id["b2"]["review"] is True  # due skill flagged
+    assert by_id["a1"]["review"] is False  # non-due skill not flagged
+
+
+def test_practice_problems_without_attempt_log_omits_review(tmp_path):
+    # No SESSION_DB_PATH -> attempt_log is None -> raw public_problems(), no review key.
+    # The frontend mapping defaults a missing key to false; assert the contract here.
+    bank_path = tmp_path / "practice.json"
+    bank_path.write_text(json.dumps(_bank([("a1", "A", 1, "1")])))
+    settings = Settings.from_env({"PRACTICE_BANK_PATH": str(bank_path)})
+    client = TestClient(create_app(settings))
+    auth = _auth(client)
+    problems = client.get("/practice/problems", headers=auth).json()["problems"]
+    assert problems and "review" not in problems[0]  # key absent; FE coerces to false
+
+
+def test_review_flag_false_for_fresh_student(tmp_path):
+    now = 100 * DAY
+    items = [("a1", "A", 1, "1"), ("b1", "B", 1, "2")]
+    client, _ = _client(tmp_path, items, now=now)
+    auth = _auth(client)
+    problems = client.get("/practice/problems", headers=auth).json()["problems"]
+    assert all(p["review"] is False for p in problems)  # nothing due -> key present, false
+
+
 def test_per_student_isolation(tmp_path):
     now = 100 * DAY
     items = [("a1", "A", 1, "1"), ("b1", "B", 1, "2")]
