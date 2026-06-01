@@ -394,8 +394,19 @@ def generate_candidates(
                 ),
             )
             candidates = generate_validated_candidates(skill_id, per_skill)
+            staged = 0
             for position, candidate in enumerate(candidates):
                 problem_id = f"candidate:{skill_id}:{position}"
+                # Candidate ids are deterministic and reused across runs. _clear_candidates
+                # has already removed stale 'candidate' rows, so if this id still exists as
+                # already-curated content (approved/promoted) from a prior promote, leave it
+                # untouched rather than colliding on the primary key. Scope the skip to curated
+                # statuses so any UNEXPECTED leftover 'candidate' row still surfaces loudly.
+                if conn.execute(
+                    "SELECT 1 FROM problem_item WHERE id = ? AND curation_status IN ('approved', 'promoted')",
+                    (problem_id,),
+                ).fetchone():
+                    continue
                 prior = heuristic_difficulty(skill_id, candidate.kind, candidate.params)
                 conn.execute(
                     "INSERT INTO problem_item VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -452,7 +463,8 @@ def generate_candidates(
                     ),
                 )
                 order += 1
-            created[skill_id] = len(candidates)
+                staged += 1
+            created[skill_id] = staged
 
         conn.commit()
 

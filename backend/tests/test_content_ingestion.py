@@ -79,6 +79,28 @@ def test_calibrate_difficulty_reports_from_the_attempt_log(tmp_path):
     assert other["calibrated"] is False and other["responses"] == 0
 
 
+def test_regenerate_after_promote_does_not_collide(tmp_path):
+    # Documented workflow: generate -> promote -> (later) generate again. Promotion
+    # leaves the candidate's deterministic id in problem_item as 'approved', so a
+    # second generation run must not hit a PK collision on it — already-curated ids
+    # are skipped (and preserved), unpromoted slots are re-staged.
+    db = _staged_db(tmp_path, per_skill=3)
+
+    def count(status):
+        with connect_content_db(db) as conn:
+            return conn.execute(
+                "SELECT COUNT(*) FROM problem_item WHERE curation_status = ?", (status,)
+            ).fetchone()[0]
+
+    promote_candidates(db, limit=1, promoted_at="2026-06-01T00:00:00Z")  # approve one
+    assert count("approved") == 1
+
+    generate_candidates(db, per_skill=3)  # must NOT raise UNIQUE constraint failed
+
+    assert count("approved") == 1  # promoted content preserved, not deleted/overwritten
+    assert count("candidate") > 0  # remaining slots re-staged as fresh candidates
+
+
 def test_calibrate_excludes_adaptive_practice_stream(tmp_path):
     # The offline calibrator must not consume the adaptively-exposed practice stream.
     # The exclusion sits on the OUTER query so the MIN(id) first-attempt is the TRUE
