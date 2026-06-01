@@ -10,6 +10,13 @@ from backend.app.api_models import SkillStateModel, TurnResponseModel
 from backend.app.config import Settings
 from backend.app.content.seed_loader import load_gold_problem_bank
 from backend.app.services.attempt_log import SqliteAttemptLog
+from backend.app.services.auth import (
+    AuthService,
+    DuplicateAccountError,
+    InMemoryAuthStore,
+    InvalidCredentialsError,
+    SqliteAuthStore,
+)
 from backend.app.services.rate_limiter import FixedWindowRateLimiter
 from backend.app.services.session_store import SqliteSessionStore, StaleSessionError
 from backend.app.services.token_store import InMemoryTokenStore, SqliteTokenStore, TokenRecord
@@ -52,6 +59,11 @@ class AssessmentRequest(BaseModel):
     context_key: NonEmptyStr
 
 
+class CredentialsRequest(BaseModel):
+    student_id: NonEmptyStr
+    password: NonEmptyStr
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     active_settings = settings or Settings.from_env()
     app = FastAPI(title=active_settings.app_name)
@@ -72,6 +84,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def _stale_session(request: Request, exc: StaleSessionError) -> JSONResponse:
         return JSONResponse(status_code=409, content={"detail": "session was modified concurrently"})
 
+    @app.exception_handler(DuplicateAccountError)
+    async def _duplicate_account(request: Request, exc: DuplicateAccountError) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": "student already registered"})
+
+    @app.exception_handler(InvalidCredentialsError)
+    async def _invalid_credentials(request: Request, exc: InvalidCredentialsError) -> JSONResponse:
+        return JSONResponse(status_code=401, content={"detail": "invalid credentials"})
+
     problem_bank = load_gold_problem_bank()
     store = (
         SqliteSessionStore(active_settings.session_db_path, problem_bank.public_problem)
@@ -88,6 +108,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         SqliteTokenStore(active_settings.session_db_path)
         if active_settings.session_db_path
         else InMemoryTokenStore()
+    )
+    auth_service = AuthService(
+        SqliteAuthStore(active_settings.session_db_path)
+        if active_settings.session_db_path
+        else InMemoryAuthStore()
     )
     turn_service = TurnService(
         problem_bank=problem_bank,
@@ -122,6 +147,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok", "app": active_settings.app_name}
+
+    @app.post("/auth/register", status_code=201)
+    def register(request: CredentialsRequest) -> dict:
+        auth_service.register(student_id=request.student_id, password=request.password)
+        return {"student_id": request.student_id}
+
+    @app.post("/auth/login")
+    def login(request: CredentialsRequest) -> dict:
+        return {"auth_token": auth_service.login(student_id=request.student_id, password=request.password)}
 
     @app.post("/session/start", response_model=TurnResponseModel)
     def start_session(request: StartSessionRequest) -> dict:
