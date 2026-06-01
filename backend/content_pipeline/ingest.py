@@ -17,6 +17,7 @@ from backend.content_pipeline.candidate_generation import (
     validate_stored_candidate,
 )
 from backend.content_pipeline.difficulty import band_to_logit, difficulty_band, heuristic_difficulty
+from backend.content_pipeline.review import DEFAULT_INTERVAL_SECONDS, review_due
 from backend.content_pipeline.provenance import build_promotion_manifest
 from backend.content_pipeline.templates.linear_functions import LINEAR_FUNCTION_TEMPLATE_CASES, LinearTemplateCase
 
@@ -688,6 +689,29 @@ def calibrate_difficulty(
     }
 
 
+def review_queue(
+    session_db_path: Path | str,
+    now: float,
+    *,
+    interval_seconds: float = DEFAULT_INTERVAL_SECONDS,
+) -> dict[str, list[dict]]:
+    """Offline spaced-review report from the attempt log (no hot-path change)."""
+    with connect_content_db(session_db_path) as conn:
+        rows = conn.execute("SELECT student_id, skill_id, check_result, ts FROM attempt_log").fetchall()
+    due = review_due(
+        [(student_id, skill_id, result, ts) for student_id, skill_id, result, ts in rows],
+        now,
+        interval_seconds=interval_seconds,
+    )
+    return {
+        student_id: [
+            {"skill_id": item.skill_id, "last_correct_ts": item.last_correct_ts, "seconds_since": item.seconds_since}
+            for item in items
+        ]
+        for student_id, items in due.items()
+    }
+
+
 def _reset_tables(conn: sqlite3.Connection) -> None:
     for table in TABLES:
         conn.execute(f"DELETE FROM {table}")
@@ -1236,6 +1260,14 @@ def main(argv: list[str] | None = None) -> None:
     calibrate_parser.add_argument("--content-db", type=Path, default=None, help="DB holding problem_item priors")
     calibrate_parser.add_argument("--output", type=Path, required=True)
 
+    review_parser = subparsers.add_parser(
+        "review-queue", help="Offline spaced-review report: skills mastered but lapsed past the interval."
+    )
+    review_parser.add_argument("--session-db", type=Path, required=True, help="DB holding the attempt_log")
+    review_parser.add_argument("--now", type=float, default=None, help="Epoch seconds 'now' (default: current time)")
+    review_parser.add_argument("--interval-days", type=float, default=2.0)
+    review_parser.add_argument("--output", type=Path, required=True)
+
     args = parser.parse_args(argv)
     if args.command == "gold":
         summary = ingest_gold_bank(args.input, args.db, deployment_mode=args.deployment_mode, replace=args.replace)
@@ -1284,6 +1316,15 @@ def main(argv: list[str] | None = None) -> None:
         report = calibrate_difficulty(args.session_db, args.content_db)
         args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
         print(f"calibrated {len(report)} items -> {args.output}")
+        return
+    if args.command == "review-queue":
+        import time
+
+        now = args.now if args.now is not None else time.time()
+        report = review_queue(args.session_db, now, interval_seconds=args.interval_days * 86400.0)
+        args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+        due = sum(len(v) for v in report.values())
+        print(f"review queue: {due} due across {len(report)} students -> {args.output}")
 
 
 if __name__ == "__main__":
