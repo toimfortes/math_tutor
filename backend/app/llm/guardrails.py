@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from fractions import Fraction
 import re
 from typing import Any
 
@@ -45,6 +46,11 @@ def apply_guardrails(payload: GuardrailInput) -> GuardrailResult:
 
     false_mastery = not payload.concept_mastered and _claims_mastery(dialogue)
 
+    if _contains_arithmetic_error(dialogue):
+        dialogue = "Let me re-check that step — work from the hint and the numbers in the problem."
+        pedagogical_move = "reflect"
+        fires.append("math_error")
+
     if _contains_answer_leak(dialogue, payload.canonical_answer, payload.banned_strings):
         dialogue = "Let's keep working from the hint rather than the final answer."
         fires.append("answer_leak")
@@ -71,6 +77,38 @@ def _contains_answer_leak(dialogue: str, canonical_answer: str, banned_strings: 
     values = [canonical_answer, *banned_strings]
     for value in values:
         if value and str(value).lower() in lowered:
+            return True
+    return False
+
+
+# A binary arithmetic equality stated in prose: "a OP b = c" (integers/decimals).
+_ARITHMETIC_EQUALITY = re.compile(
+    r"(-?\d+(?:\.\d+)?)\s*([+\-*×/÷])\s*(-?\d+(?:\.\d+)?)\s*=\s*(-?\d+(?:\.\d+)?)"
+)
+
+
+def _contains_arithmetic_error(dialogue: str) -> bool:
+    """Catch the LLM's characteristic failure: a stated computation that is wrong.
+
+    Conservative — only flags explicit `a OP b = c` equalities over plain numbers,
+    so a correct intermediate step is never suppressed.
+    """
+    for lhs, operator, rhs, result in _ARITHMETIC_EQUALITY.findall(dialogue):
+        try:
+            left, right, stated = Fraction(lhs), Fraction(rhs), Fraction(result)
+        except (ValueError, ZeroDivisionError):
+            continue
+        if operator in {"*", "×"}:
+            computed = left * right
+        elif operator in {"/", "÷"}:
+            if right == 0:
+                continue
+            computed = left / right
+        elif operator == "+":
+            computed = left + right
+        else:
+            computed = left - right
+        if computed != stated:
             return True
     return False
 

@@ -21,6 +21,38 @@ def test_guardrails_replace_answer_leak_with_fallback():
     assert "answer_leak" in guarded.guardrail_fires
 
 
+def test_guardrails_suppress_a_hint_with_false_arithmetic():
+    guarded = apply_guardrails(
+        GuardrailInput(
+            dialogue="Find the rise: 80 - 50 = 40, then divide by the run.",
+            pedagogical_move="offer_heuristic_hint",
+            proposed_hint_level=1,
+            allowed_help_level=1,
+            canonical_answer="30",
+            concept_mastered=False,
+        )
+    )
+
+    assert "math_error" in guarded.guardrail_fires
+    assert "40" not in guarded.dialogue  # the wrong arithmetic is not shown
+
+
+def test_guardrails_allow_correct_arithmetic_in_a_hint():
+    guarded = apply_guardrails(
+        GuardrailInput(
+            dialogue="The rise is 80 - 50 = 30 over a run, so think about rise / run.",
+            pedagogical_move="offer_heuristic_hint",
+            proposed_hint_level=1,
+            allowed_help_level=1,
+            canonical_answer="7",
+            concept_mastered=False,
+        )
+    )
+
+    assert "math_error" not in guarded.guardrail_fires
+    assert guarded.dialogue.startswith("The rise is 80 - 50 = 30")
+
+
 def test_guardrails_clamp_hint_level_and_block_false_mastery_claim():
     guarded = apply_guardrails(
         GuardrailInput(
