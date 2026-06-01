@@ -181,13 +181,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def health() -> dict[str, str]:
         return {"status": "ok", "app": active_settings.app_name}
 
+    def _client_ip(http_request: Request) -> str:
+        return http_request.client.host if http_request.client else "unknown"
+
     @app.post("/auth/register", status_code=201)
-    def register(request: CredentialsRequest) -> dict:
+    def register(request: CredentialsRequest, http_request: Request) -> dict:
+        # Cap before touching the store, so the credential endpoints get the same
+        # protection as the rest of the mutable API. Composite {ip}:{student_id} key.
+        _enforce_rate_limit(f"register:{_client_ip(http_request)}:{request.student_id}")
         auth_service.register(student_id=request.student_id, password=request.password)
         return {"student_id": request.student_id}
 
     @app.post("/auth/login")
-    def login(request: CredentialsRequest) -> dict:
+    def login(request: CredentialsRequest, http_request: Request) -> dict:
+        # Cap BEFORE the credential check so failed password guesses count — otherwise
+        # /auth/login is an uncapped brute-force vector while the rest of the API is limited.
+        # Composite {ip}:{student_id}: caps brute-force from any one client without letting
+        # an attacker lock out a victim (a different IP keeps its own budget) and without a
+        # shared school/NAT IP throttling distinct students against each other.
+        _enforce_rate_limit(f"login:{_client_ip(http_request)}:{request.student_id}")
         return {"auth_token": auth_service.login(student_id=request.student_id, password=request.password)}
 
     @app.get("/practice/problems")

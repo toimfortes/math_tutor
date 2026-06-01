@@ -65,11 +65,15 @@ SESSION_DB_PATH=./sessions.db LLM_PROVIDER=mock \
 
 ## Rate Limiting
 
-Set `RATE_LIMIT_PER_MINUTE` to cap requests to `/session/start` (per student)
-and mutating session endpoints such as `/turn`, `/session/skip`, and
-`/assessment/*` (per session); exceeding it returns HTTP 429. Unset disables
-it. The limiter is per-process and in-memory — a shared backend would be needed
-for a multi-instance deploy.
+Set `RATE_LIMIT_PER_MINUTE` to cap requests to `/session/start` (per student),
+mutating session endpoints such as `/turn`, `/session/skip`, and `/assessment/*`
+(per session), and the credential endpoints `/auth/login` and `/auth/register`
+(per `{client-ip}:{student-id}`, enforced before the credential check so failed
+password guesses count). Exceeding it returns HTTP 429. Unset disables it. The
+limiter is per-process and in-memory — a shared backend (plus trusted client-IP /
+`X-Forwarded-For` handling behind a proxy and a coarser per-IP cap to throttle
+cross-account password spraying) would be needed for a hardened multi-instance
+deploy.
 
 ## LLM Spend Cap
 
