@@ -50,3 +50,24 @@ class SqliteAttemptLog:
         )
         columns = [description[0] for description in cursor.description]
         return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+    def recent_decidable_by_problem(self, session_id: str, *, limit: int) -> list[dict]:
+        """Latest decidable attempt per problem — the most recent `limit` DISTINCT
+        problems, in chronological (ascending id) order.
+
+        Deduplication happens in SQL via `MAX(id) ... GROUP BY problem_id` BEFORE the
+        limit, so the cap counts distinct problems: re-attempting one problem cannot
+        flush other problems out of the window (and the latest decidable result wins,
+        landing in that problem's latest chronological slot). Read-only.
+        """
+        cursor = self._conn.execute(
+            "SELECT skill_id, problem_id, check_result FROM attempt_log WHERE id IN ("
+            "  SELECT MAX(id) FROM attempt_log "
+            "  WHERE session_id = ? AND check_result IN ('correct', 'incorrect') "
+            "  GROUP BY problem_id"
+            ") ORDER BY id DESC LIMIT ?",
+            (session_id, limit),
+        )
+        columns = [description[0] for description in cursor.description]
+        rows = list(reversed(cursor.fetchall()))
+        return [dict(zip(columns, row)) for row in rows]

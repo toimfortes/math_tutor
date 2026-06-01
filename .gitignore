@@ -12,6 +12,7 @@ frontend/openapi.json
 
 # Playwright e2e artifacts
 frontend/e2e/screenshots/
+frontend/e2e/.artifacts/
 frontend/test-results/
 frontend/playwright-report/
 frontend/.last-run.json

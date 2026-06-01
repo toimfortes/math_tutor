@@ -10,6 +10,7 @@ from pydantic import BaseModel, StringConstraints
 from backend.app.api_models import SkillStateModel, TurnResponseModel
 from backend.app.config import Settings
 from backend.app.content.practice_loader import load_practice_bank
+from backend.app.domain.practice_selection import order_for_student, target_band
 from backend.app.content.seed_loader import load_gold_problem_bank
 from backend.app.services.attempt_log import SqliteAttemptLog
 from backend.app.services.auth import (
@@ -70,6 +71,12 @@ class CredentialsRequest(BaseModel):
 class PracticeCheckRequest(BaseModel):
     problem_id: NonEmptyStr
     answer: NonEmptyStr
+
+
+# Bounds the per-request attempt-log read for band targeting. The read dedups by
+# problem_id in SQL first, so this caps the number of DISTINCT recent problems
+# considered — comfortably above WINDOW x expected skill count.
+PRACTICE_HISTORY_READ_CAP = 200
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -178,7 +185,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def practice_problems(student_id: str = Depends(require_auth_token)) -> dict:
         # Separate 'extra practice' pool of approved-generated content, distinct
         # from the gold assessment loop. Public fields only (no answers).
-        return {"problems": practice_bank.public_problems() if practice_bank is not None else []}
+        if practice_bank is None:
+            return {"problems": []}
+        problems = practice_bank.public_problems()
+        if attempt_log is None:
+            return {"problems": problems}
+        return {"problems": _band_targeted_order(problems, student_id)}
+
+    def _band_targeted_order(problems: list[dict], student_id: str) -> list[dict]:
+        # Read-only: derive a per-skill target band from the student's own practice
+        # history (frozen item difficulty is never written), then order target-first
+        # within each skill. The read dedups by problem_id in SQL (latest decidable
+        # attempt, most-recent distinct problems) so farming one problem can neither
+        # inflate the staircase nor flush other skills out of the window.
+        rows = attempt_log.recent_decidable_by_problem(
+            f"practice:{student_id}", limit=PRACTICE_HISTORY_READ_CAP
+        )
+        per_skill: dict[str, list[tuple[int, bool]]] = {}
+        for row in rows:
+            problem = practice_bank.get(row["problem_id"])
+            if problem is None:
+                continue
+            per_skill.setdefault(problem.skill_id, []).append(
+                (problem.difficulty, row["check_result"] == "correct")
+            )
+        targets = {skill_id: target_band(history) for skill_id, history in per_skill.items()}
+        return order_for_student(problems, targets)
 
     @app.post("/practice/check")
     def practice_check(request: PracticeCheckRequest, student_id: str = Depends(require_auth_token)) -> dict:
