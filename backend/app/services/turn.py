@@ -27,6 +27,10 @@ class InvalidThemeError(ValueError):
     """Raised when a requested content theme is not in the loaded bank."""
 
 
+class InvalidSkillError(ValueError):
+    """Raised when a requested skill is not in the loaded bank."""
+
+
 @dataclass
 class SessionState:
     session_id: str
@@ -318,6 +322,7 @@ class TurnService:
 
     def record_transfer(self, session_id: str, *, skill_id: str, context_key: str) -> SkillState:
         state = self._load(session_id)
+        self._validate_skill(skill_id)
         state.contexts_seen.add(context_key)
         state.transfer_passed_by_skill.add(skill_id)
         self.store.save(state)
@@ -325,6 +330,7 @@ class TurnService:
 
     def record_retention(self, session_id: str, *, skill_id: str, context_key: str) -> SkillState:
         state = self._load(session_id)
+        self._validate_skill(skill_id)
         state.contexts_seen.add(context_key)
         state.retention_passed_by_skill.add(skill_id)
         self.store.save(state)
@@ -334,6 +340,7 @@ class TurnService:
         state = self._load(session_id)
         if student_id is not None and state.student_id != student_id:
             raise SessionNotFoundError(session_id)
+        self._validate_skill(skill_id)
         attempts = [attempt for attempt in state.attempts if attempt.skill_id == skill_id]
         return SkillState(
             skill_id=skill_id,
@@ -342,6 +349,10 @@ class TurnService:
             transfer_passed=skill_id in state.transfer_passed_by_skill,
             retention_passed=skill_id in state.retention_passed_by_skill,
         )
+
+    def _validate_skill(self, skill_id: str) -> None:
+        if skill_id not in self.problem_bank.skill_ids():
+            raise InvalidSkillError(skill_id)
 
     def _generate_llm(
         self,

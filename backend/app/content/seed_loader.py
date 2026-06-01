@@ -92,6 +92,9 @@ class ProblemBank:
     def realization_keys(self) -> tuple[str, ...]:
         return tuple(sorted({ref.realization_key for ref in self._public}))
 
+    def skill_ids(self) -> tuple[str, ...]:
+        return tuple(sorted({problem.skill_id for problem in self._public.values()}))
+
 
 def load_gold_problem_bank(path: Path | None = None) -> ProblemBank:
     gold_path = path or DEFAULT_GOLD_PATH

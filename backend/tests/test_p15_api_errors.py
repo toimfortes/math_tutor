@@ -35,6 +35,25 @@ def test_student_state_requires_matching_session_owner():
     assert response.status_code == 404
 
 
+def test_unknown_skill_returns_400_for_state_and_assessments():
+    client = TestClient(create_app(Settings.from_env({})))
+    start = client.post("/session/start", json={"student_id": "alice", "theme": "neutral"}).json()
+
+    state = client.get(
+        "/student/alice/state",
+        params={"session_id": start["session_id"], "skill_id": "not-a-skill"},
+    )
+    transfer = client.post(
+        "/assessment/transfer",
+        json={"session_id": start["session_id"], "skill_id": "not-a-skill", "context_key": "neutral:transfer"},
+    )
+
+    assert state.status_code == 400
+    assert state.json()["detail"] == "unknown skill"
+    assert transfer.status_code == 400
+    assert transfer.json()["detail"] == "unknown skill"
+
+
 def test_unknown_theme_returns_400():
     client = TestClient(create_app(Settings.from_env({})))
 

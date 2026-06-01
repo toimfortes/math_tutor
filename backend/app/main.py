@@ -18,6 +18,7 @@ from backend.app.llm.mock_client import MockLLMClient
 from backend.app.llm.types import LLMClient
 from backend.app.services.turn import (
     InMemoryTurnStore,
+    InvalidSkillError,
     InvalidThemeError,
     SessionNotFoundError,
     TurnResponse,
@@ -61,6 +62,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.exception_handler(InvalidThemeError)
     async def _invalid_theme(request: Request, exc: InvalidThemeError) -> JSONResponse:
         return JSONResponse(status_code=400, content={"detail": "unknown theme"})
+
+    @app.exception_handler(InvalidSkillError)
+    async def _invalid_skill(request: Request, exc: InvalidSkillError) -> JSONResponse:
+        return JSONResponse(status_code=400, content={"detail": "unknown skill"})
 
     @app.exception_handler(StaleSessionError)
     async def _stale_session(request: Request, exc: StaleSessionError) -> JSONResponse:
