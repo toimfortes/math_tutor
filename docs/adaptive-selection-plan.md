@@ -51,10 +51,11 @@ SELECT columns, even-count median test) are implemented and tested.
 
 ## Review-due-first tier
 The research cascade's gating rule (review-due first, else band-targeted) is wired
-live as a read-only reorder. `attempt_log.last_correct_ts_by_skill(student_id)`
-(cross-session `MAX(ts) WHERE correct GROUP BY skill_id`) feeds the pure, tested
-`review_due`; skills the student mastered anywhere but let lapse past the 2-day
-interval are promoted to the front of `/practice/problems`. `order_for_student` gained
+live as a read-only reorder. `attempt_log.mastery_by_skill(student_id)` (cross-session
+`MAX(ts), COUNT(DISTINCT problem_id) WHERE correct GROUP BY skill_id`) feeds the pure,
+tested `due_from_mastery`; skills the student has mastered anywhere (≥ 2 distinct correct
+problems — see below) but let lapse past the 2-day interval are promoted to the front of
+`/practice/problems`. `order_for_student` gained
 a `due_skills` tier: round-robin **interleaved** across due skills, **capped** at
 `REVIEW_QUOTA=2` per skill (no massing, no monopolization), remainder in band-targeted
 order. The wall-clock is read only via a `get_clock` FastAPI dependency (pure modules

@@ -13,14 +13,16 @@ uses real cross-session elapsed time (faithful to the spacing evidence) but runs
 OFFLINE — no clock in the hot path, no submit_turn change, no scheduler/
 interleaving interaction, no idempotency hazard. Mirrors the `calibrate` pattern.
 
-`backend/content_pipeline/review.py`:
-`review_due(attempts, now, *, interval_seconds) -> dict[student_id, list[ReviewDue]]`
-- attempts: (student_id, skill_id, check_result, ts) from the log.
-- For each (student, skill): find the most-recent CORRECT ts. A skill is DUE if
-  `now - last_correct_ts >= interval_seconds` AND the student has no MORE-RECENT
-  correct attempt (by definition it's the latest correct) — i.e. they got it
-  right, then let it lapse. Skills never answered correctly are NOT due (nothing
-  mastered to review).
+`backend/content_pipeline/review.py` (current — strengthened to N-distinct mastery):
+`due_from_mastery(mastery, now, *, interval_seconds, min_corrects=2) -> list[ReviewDue]`
+(pure core, one student) and the multi-student adapter
+`review_due(attempts, now, *, interval_seconds, min_corrects=2) -> dict[student_id, list[ReviewDue]]`
+- attempts: (student_id, skill_id, problem_id, check_result, ts) from the log.
+- For each (student, skill): a skill is MASTERED once the student has ≥ `min_corrects`
+  DISTINCT correct problems in it (replaying one problem cannot qualify — counts
+  distinct `problem_id`s, not attempts). A mastered skill is DUE if its most-recent
+  CORRECT ts has lapsed (`now - last_correct_ts >= interval_seconds`); re-mastering it
+  recently resets the clock. Skills not yet mastered are NOT due.
 - `now` is an explicit parameter (deterministic; CLI passes wall-clock, tests
   pass fixed). seconds, not days, internally.
 - ReviewDue = {skill_id, last_correct_ts, seconds_since}; per student sorted
