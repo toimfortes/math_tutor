@@ -7,6 +7,10 @@ import { MathText } from "./MathText";
 const MISCONCEPTION_HINTS: Record<string, string> = {
   inverted_slope: "Looks like rise and run are swapped — slope is the change in y divided by the change in x.",
   sign_error: "Check the sign — does the quantity increase or decrease?",
+  forgot_intercept: "Don't forget to add the intercept (the + b term) after multiplying.",
+  slope_for_intercept: "That's the slope — the y-intercept is the constant term (the value when x = 0).",
+  intercept_for_slope: "That's the intercept — the rate of change is the coefficient of x.",
+  swapped_slope_intercept: "Check the order: y = (slope)x + (intercept).",
 };
 
 /**

@@ -59,6 +59,25 @@ def test_validate_candidate_rejects_distractor_that_collides_with_the_answer():
     assert any("distractor" in error for error in errors)
 
 
+def test_misconception_distractors_cover_non_slope_kinds():
+    from backend.content_pipeline.templates.linear_functions import LinearTemplateCase, known_wrong_answers
+
+    def distractors(kind, params):
+        return known_wrong_answers(
+            LinearTemplateCase(problem_id="t", realization_key="neutral", kind=kind, answer_type="", params=params, roles={})
+        )
+
+    # evaluate y = 2x+1 at x=3 -> 7; "forgot the intercept" -> 2*3 = 6
+    assert distractors("evaluate_y", {"m": 2, "b": 1, "x": 3})["forgot_intercept"] == "6"
+    # y-intercept of y=2x+1 is 1; giving the slope (2) is the classic confusion
+    assert distractors("intercept_equation", {"m": 2, "b": 1})["slope_for_intercept"] == "2"
+    # interpret slope of y=2x+1 is 2; giving the intercept (1) is the confusion
+    assert distractors("interpret_slope", {"m": 2, "b": 1})["intercept_for_slope"] == "1"
+    # equation slope 2 intercept 1 -> "2x + 1"; swapped -> "x + 2"
+    swapped = distractors("slope_intercept_equation", {"m": 2, "b": 1, "var": "x"})["swapped_slope_intercept"]
+    assert "swapped_slope_intercept" and swapped and swapped != "2x + 1"
+
+
 def test_generated_slope_candidates_have_distinct_valid_distractors():
     # the conceptual gate should pass for real generated slope items (slope >= 2,
     # so sign_error and inverted_slope never equal the answer)

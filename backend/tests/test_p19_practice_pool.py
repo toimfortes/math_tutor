@@ -93,6 +93,26 @@ def test_practice_check_returns_a_misconception_diagnostic(tmp_path):
     assert response["diagnostic"]["student_error_tag"] == "inverted_slope"
 
 
+def test_practice_diagnostic_covers_non_slope_kinds(tmp_path):
+    import json
+
+    practice_path = _practice_bank(tmp_path)
+    settings = Settings.from_env({"PRACTICE_BANK_PATH": str(practice_path)})
+    client = TestClient(create_app(settings))
+    auth = _auth(client)
+
+    bank = json.loads(practice_path.read_text())
+    evaluate = next(p for p in bank["problems"] if p["skill_id"] == "lin_evaluate")
+    forgot_intercept = evaluate["known_wrong_answers"]["forgot_intercept"]
+
+    response = client.post(
+        "/practice/check", json={"problem_id": evaluate["id"], "answer": forgot_intercept}, headers=auth
+    ).json()
+
+    assert response["check_result"] != "correct"
+    assert response["diagnostic"]["student_error_tag"] == "forgot_intercept"
+
+
 def test_practice_endpoints_require_auth_and_handle_unknown_problem(tmp_path):
     settings = Settings.from_env({"PRACTICE_BANK_PATH": str(_practice_bank(tmp_path))})
     client = TestClient(create_app(settings))
