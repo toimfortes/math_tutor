@@ -100,6 +100,17 @@ def _rate_prompt(params: dict) -> str:
     )
 
 
+def _equation_params(index: int) -> dict:
+    return {"m": index + 2, "b": index + 1, "var": "x"}
+
+
+def _equation_prompt(params: dict) -> str:
+    return (
+        f"Write the equation of a line with slope {params['m']} and y-intercept {params['b']} "
+        f"in the form y = mx + b."
+    )
+
+
 _SLOPE_SCAFFOLD = {
     "max_safe_hint_level": 2,
     "level_0": "Find how much each coordinate changes between the two points.",
@@ -137,6 +148,14 @@ _RATE_SCAFFOLD = {
     "level_0": "Compare how much the quantity changes against how much x changes.",
     "level_1": "Rate of change is change in the quantity divided by change in x.",
     "level_2": "Divide the difference in values by the difference in x.",
+    "level_3": None,
+}
+
+_EQUATION_SCAFFOLD = {
+    "max_safe_hint_level": 2,
+    "level_0": "Slope-intercept form is y = mx + b.",
+    "level_1": "Put the slope in the m position and the intercept in the b position.",
+    "level_2": "Write y = (slope)x + (intercept) with the given numbers.",
     "level_3": None,
 }
 
@@ -186,6 +205,15 @@ GENERATORS: dict[str, GeneratorSpec] = {
         make_params=_rate_params,
         make_prompt=_rate_prompt,
         hint_scaffold=_RATE_SCAFFOLD,
+    ),
+    "lin_equation_slope_intercept": GeneratorSpec(
+        skill_id="lin_equation_slope_intercept",
+        kind="slope_intercept_equation",
+        answer_type="expression",
+        checker="sympy_equiv",
+        make_params=_equation_params,
+        make_prompt=_equation_prompt,
+        hint_scaffold=_EQUATION_SCAFFOLD,
     ),
 }
 
