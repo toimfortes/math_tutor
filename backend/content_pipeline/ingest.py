@@ -659,9 +659,16 @@ def calibrate_difficulty(
     not write back to any DB or touch scheduling.
     """
     with connect_content_db(session_db_path) as conn:
+        # Exclude the adaptively-exposed practice stream so the offline calibrator is
+        # not biased by the live difficulty-targeting/review policy. The exclusion sits
+        # on the OUTER query (not the MIN(id) subquery) so the subquery still finds each
+        # (student, item)'s TRUE first attempt: an item first seen in practice is dropped
+        # entirely rather than counting a warmed-up post-practice assessment retry as a
+        # "first attempt". The calibration cohort is thus cold, non-practice first attempts.
         rows = conn.execute(
             "SELECT problem_id, check_result FROM attempt_log "
-            "WHERE id IN (SELECT MIN(id) FROM attempt_log GROUP BY student_id, problem_id)"
+            "WHERE id IN (SELECT MIN(id) FROM attempt_log GROUP BY student_id, problem_id) "
+            "AND session_id NOT LIKE 'practice:%'"
         ).fetchall()
     first_attempts = [(pid, result if result in _OUTCOMES else "undecidable") for pid, result in rows]
 

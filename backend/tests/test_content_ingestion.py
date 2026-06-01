@@ -79,6 +79,45 @@ def test_calibrate_difficulty_reports_from_the_attempt_log(tmp_path):
     assert other["calibrated"] is False and other["responses"] == 0
 
 
+def test_calibrate_excludes_adaptive_practice_stream(tmp_path):
+    # The offline calibrator must not consume the adaptively-exposed practice stream.
+    # The exclusion sits on the OUTER query so the MIN(id) first-attempt is the TRUE
+    # global first attempt: a problem first seen in practice (then re-seen in
+    # assessment) is excluded entirely, never counted as a warmed-up "first attempt".
+    from backend.content_pipeline.ingest import calibrate_difficulty
+
+    content_db = _staged_db(tmp_path, per_skill=3)
+    session_db = tmp_path / "session.db"
+    conn = connect_content_db(session_db)
+    conn.execute(
+        "CREATE TABLE attempt_log (id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL, session_id TEXT, "
+        "student_id TEXT, skill_id TEXT, problem_id TEXT, check_result TEXT, xp_awarded INTEGER)"
+    )
+
+    def insert(session_id, student_id, problem_id, result):
+        conn.execute(
+            "INSERT INTO attempt_log (ts, session_id, student_id, skill_id, problem_id, check_result, xp_awarded) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (1.0, session_id, student_id, "lin_evaluate", problem_id, result, 0),
+        )
+
+    assess_first = "candidate:lin_evaluate:0"   # first encounter in assessment -> counts
+    practice_only = "candidate:lin_evaluate:1"  # only ever in practice -> excluded
+    warmup = "candidate:lin_evaluate:2"          # practice FIRST then assessment -> excluded
+    insert("s0", "stuA", assess_first, "incorrect")
+    insert("practice:stuB", "stuB", practice_only, "correct")
+    insert("practice:stuC", "stuC", warmup, "incorrect")   # true first attempt (lower id) = practice
+    insert("s9", "stuC", warmup, "correct")                # later assessment retry (higher id)
+    conn.commit()
+    conn.close()
+
+    report = calibrate_difficulty(session_db, content_db)
+
+    assert report[assess_first]["responses"] == 1 and report[assess_first]["calibrated"] is True
+    assert report[practice_only]["responses"] == 0   # practice-only excluded
+    assert report[warmup]["responses"] == 0          # true-first-attempt was practice -> excluded
+
+
 def test_oer_sources_record_an_edition(tmp_path):
     db_path = tmp_path / "content.sqlite3"
     ingest_oer_manifest(DEFAULT_OER_MANIFEST_PATH, db_path, deployment_mode=DeploymentMode.FREE_NONCOMMERCIAL)
