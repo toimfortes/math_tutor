@@ -143,3 +143,18 @@ python -m backend.content_pipeline.provenance \
 ```
 
 Live generation and cross-provider extraction remain offline promotion steps, not reproducible CI gates.
+
+### Source ingestion → gated generation → practice pool
+
+`backend/content_pipeline/ingest.py` builds a SQLite content substrate and a separate, gated path for generated content. The runtime gold assessment bank is never altered by this — `export-gold` only emits `curation_status='promoted'` (the frozen 16), and the frozen-bank verifier guards it.
+
+```bash
+python -m backend.content_pipeline.ingest gold --db content.sqlite3                 # gold -> DB
+python -m backend.content_pipeline.ingest oer --db content.sqlite3                  # stage reviewed OER metadata
+python -m backend.content_pipeline.ingest generate-candidates --db content.sqlite3  # gated parametric candidates
+python -m backend.content_pipeline.ingest promote --db content.sqlite3              # re-verify -> 'approved'
+python -m backend.content_pipeline.ingest export-practice --db content.sqlite3 --output practice.json
+python -m backend.content_pipeline.ingest verify-practice --input practice.json     # re-derivation gate
+```
+
+Each generated candidate is validated through the same gates as runtime content (deterministic solver result, code-owned checker round-trip, safety scan, no answer leak). Approved content is exported as a **separate practice pool**, distinct from the frozen gold assessment bank. Set `PRACTICE_BANK_PATH` to serve it via the authenticated `/practice/*` endpoints and the frontend "Extra practice" mode; unset leaves the pool empty. Browser coverage: `cd frontend && npm run e2e`.
