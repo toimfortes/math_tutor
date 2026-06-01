@@ -9,11 +9,13 @@ from backend.content_pipeline.ingest import (
     DEFAULT_OER_MANIFEST_PATH,
     connect_content_db,
     export_gold_bank,
+    export_practice_bank,
     generate_candidates,
     ingest_oer_manifest,
     ingest_gold_bank,
     is_license_allowed,
     promote_candidates,
+    verify_practice_bank,
 )
 from backend.content_pipeline.verify import verify_frozen_gold_bank
 
@@ -47,6 +49,40 @@ def test_promote_approves_candidates_but_keeps_runtime_bank_frozen(tmp_path):
     export_gold_bank(db_path, export_path)
     assert len(json.loads(export_path.read_text())["problems"]) == 16
     assert verify_frozen_gold_bank(export_path).ok is True
+
+
+def test_export_practice_emits_approved_pool_and_verifies(tmp_path):
+    db_path = _staged_db(tmp_path, per_skill=4)
+    practice_path = tmp_path / "practice.json"
+    gold_path = tmp_path / "gold.json"
+    promotion = promote_candidates(db_path, promoted_at="2026-06-01T00:00:00Z")
+
+    count = export_practice_bank(db_path, practice_path)
+
+    bank = json.loads(practice_path.read_text())
+    assert bank["pool"] == "practice"
+    assert count == promotion.promoted
+    assert len(bank["problems"]) == promotion.promoted
+    assert verify_practice_bank(practice_path).ok is True
+
+    # the frozen gold assessment bank is a separate artifact, still exactly 16
+    export_gold_bank(db_path, gold_path)
+    assert len(json.loads(gold_path.read_text())["problems"]) == 16
+
+
+def test_practice_verifier_rejects_a_tampered_problem(tmp_path):
+    db_path = _staged_db(tmp_path, per_skill=3)
+    practice_path = tmp_path / "practice.json"
+    promote_candidates(db_path, promoted_at="2026-06-01T00:00:00Z")
+    export_practice_bank(db_path, practice_path)
+
+    bank = json.loads(practice_path.read_text())
+    bank["problems"][0]["neutral"]["canonical_answer"] = "999999"  # no longer the solver result
+    practice_path.write_text(json.dumps(bank))
+
+    report = verify_practice_bank(practice_path)
+    assert report.ok is False
+    assert report.errors
 
 
 def test_promote_can_target_a_single_skill(tmp_path):

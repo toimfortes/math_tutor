@@ -66,6 +66,13 @@ class PromotionSummary:
     verifier_ok: bool
 
 
+@dataclass(frozen=True)
+class PracticeVerificationReport:
+    ok: bool
+    problem_count: int
+    errors: list[str]
+
+
 PROBLEM_LEVEL_REALIZATION = "__problem__"
 
 
@@ -548,6 +555,77 @@ def _clear_candidates(conn: sqlite3.Connection) -> None:
         conn.execute("DELETE FROM hint_scaffold WHERE problem_item_id = ?", (problem_id,))
         conn.execute("DELETE FROM representation_payload WHERE problem_item_id = ?", (problem_id,))
     conn.execute("DELETE FROM problem_item WHERE curation_status = 'candidate'")
+
+
+def export_practice_bank(db_path: Path | str, output_path: Path | str) -> int:
+    """Export approved-generated problems to a separate practice bank JSON.
+
+    This is the 'extra practice' pool, distinct from the frozen gold assessment
+    bank. Each problem carries its kind + params so the practice verifier can
+    re-derive the answer deterministically.
+    """
+    output_path = Path(output_path)
+    with connect_content_db(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT pi.id AS id, pi.skill_id AS skill_id, pi.answer_type AS answer_type, pi.checker AS checker, "
+            "pi.representations AS representations, t.template_kind AS kind, "
+            "pr.prompt AS prompt, pr.canonical_answer AS canonical_answer, pr.param_values AS param_values, "
+            "hs.max_safe_hint_level AS msh, hs.level_0 AS l0, hs.level_1 AS l1, hs.level_2 AS l2, hs.level_3 AS l3 "
+            "FROM problem_item pi "
+            "JOIN template t ON t.id = pi.template_id "
+            "JOIN problem_realization pr ON pr.problem_item_id = pi.id AND pr.realization_key = 'neutral' "
+            "JOIN hint_scaffold hs ON hs.problem_item_id = pi.id "
+            "WHERE pi.curation_status = 'approved' ORDER BY pi.order_index"
+        ).fetchall()
+
+    problems = [
+        {
+            "id": row["id"],
+            "skill_id": row["skill_id"],
+            "kind": row["kind"],
+            "answer_type": row["answer_type"],
+            "checker": row["checker"],
+            "representations": json.loads(row["representations"]),
+            "params": json.loads(row["param_values"]),
+            "neutral": {
+                "prompt": row["prompt"],
+                "canonical_answer": row["canonical_answer"],
+                "solution_method": "",
+            },
+            "hint_scaffold": {
+                "max_safe_hint_level": row["msh"],
+                "level_0": row["l0"],
+                "level_1": row["l1"],
+                "level_2": row["l2"],
+                "level_3": row["l3"],
+            },
+        }
+        for row in rows
+    ]
+    bank = {"schema_version": "1.0", "domain": "linear_functions", "pool": "practice", "problems": problems}
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(bank, indent=2, ensure_ascii=False) + "\n")
+    return len(problems)
+
+
+def verify_practice_bank(path: Path | str) -> PracticeVerificationReport:
+    """Re-derive and gate every problem in a practice bank artifact."""
+    data = json.loads(Path(path).read_text())
+    errors: list[str] = []
+    for problem in data.get("problems", []):
+        problem_errors = validate_stored_candidate(
+            skill_id=problem["skill_id"],
+            kind=problem["kind"],
+            answer_type=problem["answer_type"],
+            params=problem["params"],
+            prompt=problem["neutral"]["prompt"],
+            canonical_answer=problem["neutral"]["canonical_answer"],
+        )
+        errors.extend(f"{problem['id']}: {error}" for error in problem_errors)
+    return PracticeVerificationReport(
+        ok=not errors, problem_count=len(data.get("problems", [])), errors=errors
+    )
 
 
 def _reset_tables(conn: sqlite3.Connection) -> None:
@@ -1057,6 +1135,17 @@ def main(argv: list[str] | None = None) -> None:
     promote_parser.add_argument("--skill", type=str, default=None)
     promote_parser.add_argument("--limit", type=int, default=None)
 
+    export_practice_parser = subparsers.add_parser(
+        "export-practice", help="Export approved-generated problems to a separate practice bank JSON."
+    )
+    export_practice_parser.add_argument("--db", type=Path, required=True)
+    export_practice_parser.add_argument("--output", type=Path, required=True)
+
+    verify_practice_parser = subparsers.add_parser(
+        "verify-practice", help="Re-derive and gate every problem in a practice bank artifact."
+    )
+    verify_practice_parser.add_argument("--input", type=Path, required=True)
+
     args = parser.parse_args(argv)
     if args.command == "gold":
         summary = ingest_gold_bank(args.input, args.db, deployment_mode=args.deployment_mode, replace=args.replace)
@@ -1090,6 +1179,16 @@ def main(argv: list[str] | None = None) -> None:
             promoted_at=datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         )
         print(json.dumps(summary.__dict__, indent=2, sort_keys=True))
+        return
+    if args.command == "export-practice":
+        count = export_practice_bank(args.db, args.output)
+        print(f"exported practice bank: {args.output} ({count} problems)")
+        return
+    if args.command == "verify-practice":
+        report = verify_practice_bank(args.input)
+        if not report.ok:
+            raise SystemExit("\n".join(report.errors))
+        print(f"practice bank verified: {report.problem_count} problems")
 
 
 if __name__ == "__main__":
