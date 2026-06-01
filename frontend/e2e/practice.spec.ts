@@ -15,12 +15,15 @@ test("a student solves an extra-practice problem in a real browser", async ({ pa
   await page.getByRole("button", { name: "Extra practice" }).click();
   await expect(page.getByText("Generated practice problems")).toBeVisible();
 
-  // the first rendered practice item corresponds to the first problem in the bank
+  // items are served easiest-first, so the first rendered item may not be
+  // bank.problems[0]; match the displayed prompt to find its canonical answer.
   const bank = JSON.parse(readFileSync(path.resolve("e2e/.artifacts/practice.json"), "utf-8"));
-  const firstAnswer = bank.problems[0].neutral.canonical_answer;
-
   const firstItem = page.locator(".practice-item").first();
-  await firstItem.locator("input").fill(firstAnswer);
+  const shownPrompt = (await firstItem.locator("p").nth(1).textContent())?.trim();
+  const matched = bank.problems.find((p: any) => p.neutral.prompt === shownPrompt);
+  if (!matched) throw new Error(`could not match displayed prompt: ${shownPrompt}`);
+
+  await firstItem.locator("input").fill(matched.neutral.canonical_answer);
   await firstItem.getByRole("button", { name: "Check" }).click();
 
   await expect(firstItem.locator(".practice-result.correct")).toBeVisible();

@@ -30,11 +30,14 @@ class PracticeProblem:
     canonical_answer: str
     variable: str | None
     known_wrong: dict[str, str]
+    difficulty: int
 
 
 class PracticeBank:
     def __init__(self, problems: list[PracticeProblem]):
-        self._problems = problems
+        # Graduated practice: serve easiest-first. Backend owns the order so any
+        # client is correct; stable tiebreak by id (no RNG).
+        self._problems = sorted(problems, key=lambda problem: (problem.difficulty, problem.id))
         self._by_id = {problem.id: problem for problem in problems}
 
     def public_problems(self) -> list[dict]:
@@ -43,6 +46,7 @@ class PracticeBank:
                 "id": problem.id,
                 "skill_id": problem.skill_id,
                 "answer_type": problem.answer_type,
+                "difficulty": problem.difficulty,
                 "representations": list(problem.representations),
                 "prompt": problem.prompt,
                 "hint_scaffold": {
@@ -109,6 +113,7 @@ def load_practice_bank(path: Path | str) -> PracticeBank:
                 canonical_answer=canonical,
                 variable=variable,
                 known_wrong=dict(raw.get("known_wrong_answers", {})),
+                difficulty=raw.get("difficulty", 3),  # default mid-band for older artifacts
             )
         )
     return PracticeBank(problems)

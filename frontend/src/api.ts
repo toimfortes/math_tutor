@@ -136,6 +136,7 @@ export type PracticeProblem = {
   prompt: string;
   answerType: string;
   representations: string[];
+  difficulty: number;
 };
 
 export async function getPracticeProblems(fetcher: FetchLike, authToken: string): Promise<PracticeProblem[]> {
@@ -150,6 +151,7 @@ export async function getPracticeProblems(fetcher: FetchLike, authToken: string)
     prompt: problem.prompt,
     answerType: problem.answer_type,
     representations: problem.representations ?? [],
+    difficulty: problem.difficulty ?? 3,
   }));
 }
 

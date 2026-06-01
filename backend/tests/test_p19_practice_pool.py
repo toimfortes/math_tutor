@@ -109,6 +109,19 @@ def test_practice_pool_is_empty_when_unconfigured():
     assert client.get("/practice/problems", headers=auth).json()["problems"] == []
 
 
+def test_practice_problems_are_served_easiest_first_with_difficulty(tmp_path):
+    settings = Settings.from_env({"PRACTICE_BANK_PATH": str(_practice_bank(tmp_path))})
+    client = TestClient(create_app(settings))
+    auth = _auth(client)
+
+    problems = client.get("/practice/problems", headers=auth).json()["problems"]
+
+    difficulties = [p["difficulty"] for p in problems]
+    assert len(difficulties) > 1
+    assert difficulties == sorted(difficulties)  # graduated: non-decreasing difficulty
+    assert all(1 <= d <= 5 for d in difficulties)
+
+
 def test_practice_check_emits_a_structured_log(tmp_path, caplog):
     import logging
 

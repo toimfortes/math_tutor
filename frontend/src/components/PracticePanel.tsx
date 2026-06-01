@@ -41,7 +41,9 @@ export function PracticePanel({
         const misconception = result && !correct && result.errorTag ? MISCONCEPTION_HINTS[result.errorTag] : null;
         return (
           <div key={problem.id} className="practice-item">
-            <p className="eyebrow">{problem.skillId}</p>
+            <p className="eyebrow">
+              {problem.skillId} · Level {problem.difficulty}
+            </p>
             <p>
               <MathText text={problem.prompt} />
             </p>

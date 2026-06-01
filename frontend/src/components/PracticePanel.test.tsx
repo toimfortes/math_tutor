@@ -8,8 +8,8 @@ import { PracticePanel } from "./PracticePanel";
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const PROBLEMS: PracticeProblem[] = [
-  { id: "candidate:lin_evaluate:0", skillId: "lin_evaluate", prompt: "For y = 2x + 1, find y when x = 3.", answerType: "numeric", representations: ["text"] },
-  { id: "candidate:lin_evaluate:1", skillId: "lin_evaluate", prompt: "For y = 3x + 2, find y when x = 4.", answerType: "numeric", representations: ["text"] },
+  { id: "candidate:lin_evaluate:0", skillId: "lin_evaluate", prompt: "For y = 2x + 1, find y when x = 3.", answerType: "numeric", representations: ["text"], difficulty: 2 },
+  { id: "candidate:lin_evaluate:1", skillId: "lin_evaluate", prompt: "For y = 3x + 2, find y when x = 4.", answerType: "numeric", representations: ["text"], difficulty: 3 },
 ];
 
 describe("PracticePanel", () => {
@@ -42,6 +42,7 @@ describe("PracticePanel", () => {
     const container = render(<PracticePanel problems={PROBLEMS} onCheck={onCheck} />);
 
     expect(container.textContent).toContain("For y = 2x + 1, find y when x = 3.");
+    expect(container.textContent).toContain("Level 2");  // difficulty badge
 
     const input = container.querySelector("input") as HTMLInputElement;
     await act(async () => setValue(input, "7"));
