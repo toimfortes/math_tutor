@@ -59,6 +59,22 @@ function button(container: HTMLElement, label: string) {
   return match as HTMLButtonElement;
 }
 
+function submitButton(container: HTMLElement) {
+  const match = container.querySelector('button[aria-label="Submit answer"]');
+  if (!match) throw new Error("Submit button not found");
+  return match as HTMLButtonElement;
+}
+
+async function typeAnswer(container: HTMLElement, value: string) {
+  const input = container.querySelector("input");
+  if (!input) throw new Error("Answer input not found");
+  await act(async () => {
+    const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    valueSetter?.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+
 describe("App", () => {
   let root: Root | null = null;
   let host: HTMLDivElement | null = null;
@@ -259,6 +275,51 @@ describe("App", () => {
     // publicProblem() authors level_2 = "Name the operation." and level_0 differently.
     expect(host.textContent).toContain("Name the operation.");
     expect(host.textContent).not.toContain("Think about the relationship.");
+  });
+
+  it("accumulates XP across turn awards", async () => {
+    const startTurn = turnResponse("Plot the station at (4, 3).", "lf_p01");
+    const correctTurn = {
+      ...turnResponse("Find the slope of this route.", "lf_p02"),
+      check_result: "correct",
+      xp_awarded: 8,
+    };
+    const wrongTurn = {
+      ...turnResponse("Find the slope of this route.", "lf_p02"),
+      check_result: "incorrect",
+      xp_awarded: 1,
+    };
+    const fetchMock = vi
+      .fn()
+      .mockReturnValueOnce(jsonResponse(startTurn))
+      .mockReturnValueOnce(jsonResponse(skillState()))
+      .mockReturnValueOnce(jsonResponse(correctTurn))
+      .mockReturnValueOnce(jsonResponse(skillState({ attempt_count: 1 })))
+      .mockReturnValueOnce(jsonResponse(wrongTurn))
+      .mockReturnValueOnce(jsonResponse(skillState({ attempt_count: 2 })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+
+    await act(async () => {
+      root?.render(<App />);
+    });
+    await act(async () => {
+      button(host!, "Start").click();
+    });
+    await typeAnswer(host!, "(4, 3)");
+    await act(async () => {
+      submitButton(host!).click();
+    });
+    expect(host.textContent).toContain("XP8");
+
+    await typeAnswer(host!, "5");
+    await act(async () => {
+      submitButton(host!).click();
+    });
+    expect(host.textContent).toContain("XP9");
   });
 
   it("renders an empty grid for plot-a-point problems", async () => {

@@ -1,5 +1,5 @@
 import { ArrowRight, BadgeCheck, CalendarCheck2, CheckCircle2, CircleAlert, FastForward, RotateCcw, Send } from "lucide-react";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useState } from "react";
 import { getStudentState, recordRetention, recordTransfer, SkillState, skipProblem, startSession, submitTurn, TurnResponse } from "./api";
 import { hintForLevel } from "./hints";
 import { ChatPanel } from "./components/ChatPanel";
@@ -23,7 +23,7 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [turnCount, setTurnCount] = useState(0);
-  const totalXp = useMemo(() => (turn?.xpAwarded ?? 0), [turn]);
+  const [totalXp, setTotalXp] = useState(0);
 
   async function loadSkillState(nextTurn: TurnResponse) {
     const nextState = await getStudentState(fetch, {
@@ -42,6 +42,7 @@ export function App() {
       setTurn(next);
       setAnswer("");
       setTurnCount(0);
+      setTotalXp(next.xpAwarded);
       await loadSkillState(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to start");
@@ -64,6 +65,7 @@ export function App() {
       });
       setTurn(next);
       setTurnCount(nextCount);
+      setTotalXp((current) => current + next.xpAwarded);
       setAnswer("");
       await loadSkillState(next);
     } catch (err) {
