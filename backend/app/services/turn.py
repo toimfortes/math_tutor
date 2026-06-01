@@ -201,7 +201,14 @@ class TurnService:
             state.active_attempt_id = _new_attempt_id(state.active_ref)
 
         active_public = self.problem_bank.public_problem(state.active_ref)
-        allowed_help = compute_allowed_help_level(attempt.submissions, max_safe_hint_level=active_public.hint_scaffold.max_safe_hint_level)
+        allowed_help = (
+            0
+            if presenting_next
+            else compute_allowed_help_level(
+                attempt.submissions,
+                max_safe_hint_level=active_public.hint_scaffold.max_safe_hint_level,
+            )
+        )
         llm, llm_guardrail_fires = self._generate_llm(
             check_result=check.check_result,
             diagnostic=diagnostic,

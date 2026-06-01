@@ -74,6 +74,31 @@ def test_retries_on_same_problem_are_grouped_under_one_attempt():
     assert state.attempts[0].submissions[1].self_correction is True
 
 
+def test_next_problem_presentation_resets_help_level_after_prior_failures():
+    class RecordingLLM(MockLLMClient):
+        def __init__(self):
+            self.calls = []
+
+        def generate(self, **kwargs):
+            self.calls.append(kwargs)
+            return super().generate(**kwargs)
+
+    llm = RecordingLLM()
+    service = TurnService(
+        problem_bank=load_gold_problem_bank(),
+        llm_client=llm,
+        store=InMemoryTurnStore(),
+    )
+    start = service.start_session(student_id="student-1", theme="space_logistics")
+
+    service.submit_turn(start.session_id, idempotency_key="wrong-1", answer="(5, 3)")
+    service.submit_turn(start.session_id, idempotency_key="wrong-2", answer="(6, 3)")
+    service.submit_turn(start.session_id, idempotency_key="correct", answer="(4, 3)")
+
+    assert llm.calls[-1]["presenting_next"] is True
+    assert llm.calls[-1]["allowed_help_level"] == 0
+
+
 def test_wrong_answer_uses_diagnostic_tag_and_does_not_advance_problem():
     service = build_service()
     start = service.start_session(student_id="student-1", theme="space_logistics")
