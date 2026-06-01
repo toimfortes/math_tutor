@@ -115,6 +115,29 @@ describe("App", () => {
     vi.restoreAllMocks();
   });
 
+  it("signs in with valid credentials even when registration is rate-limited (429)", async () => {
+    // Regression: a throttled /auth/register must not block sign-in — login has its own
+    // rate-limit bucket, so a returning user with valid credentials still gets through.
+    const fetchMock = vi
+      .fn()
+      .mockReturnValueOnce(new Response(null, { status: 429 })) // register -> rate limited
+      .mockReturnValueOnce(jsonResponse({ auth_token: "auth-tok" })) // login -> succeeds
+      .mockReturnValueOnce(jsonResponse(turnResponse("Plot the station at (4, 3).", "lf_p01")))
+      .mockReturnValueOnce(jsonResponse(skillState()));
+    vi.stubGlobal("fetch", fetchMock);
+
+    host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => {
+      root?.render(<App />);
+    });
+    await signIn(host);
+
+    expect(host.textContent).toContain("Plot the station at (4, 3)."); // reached the tutor
+    expect(host.textContent).not.toContain("Request failed"); // no error surfaced
+  });
+
   it("loads skill state and exposes skip, transfer, and retention actions", async () => {
     const fetchMock = authMocks(vi.fn())
       .mockReturnValueOnce(jsonResponse(turnResponse("Plot the station at (4, 3).", "lf_p01")))

@@ -102,8 +102,11 @@ export async function registerAccount(
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ student_id: params.studentId, password: params.password }),
   });
-  // 409 means the account already exists, which is fine — the caller will log in.
-  if (!response.ok && response.status !== 409) {
+  // 409 = the account already exists; 429 = registration is rate-limited. Neither is
+  // fatal to sign-in: registration and login have independent rate-limit buckets, so the
+  // caller can still log in (an existing user must not be blocked because the register
+  // bucket is throttled). A genuine login failure surfaces from login() itself.
+  if (!response.ok && response.status !== 409 && response.status !== 429) {
     throw new Error(`Request failed: ${response.status}`);
   }
 }

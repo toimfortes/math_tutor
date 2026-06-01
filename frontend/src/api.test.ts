@@ -1,5 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
-import { getPracticeProblems, getStudentState, recordRetention, recordTransfer, skipProblem, startSession, submitTurn } from "./api";
+import { getPracticeProblems, getStudentState, login, recordRetention, recordTransfer, registerAccount, skipProblem, startSession, submitTurn } from "./api";
+
+describe("registerAccount rate-limit tolerance", () => {
+  it("does not throw when registration is rate-limited (429) so the caller can still log in", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(null, { status: 429 }));
+    await expect(registerAccount(fetchMock, { studentId: "ada", password: "pw" })).resolves.toBeUndefined();
+  });
+
+  it("still throws on a genuine error (500)", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(null, { status: 500 }));
+    await expect(registerAccount(fetchMock, { studentId: "ada", password: "pw" })).rejects.toThrow();
+  });
+
+  it("login still surfaces a 429 (its own bucket) as an error", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(null, { status: 429 }));
+    await expect(login(fetchMock, { studentId: "ada", password: "pw" })).rejects.toThrow();
+  });
+});
 
 describe("getPracticeProblems mapping", () => {
   it("maps review and defaults a missing review key to false", async () => {
