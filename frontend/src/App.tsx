@@ -5,6 +5,7 @@ import {
   getPracticeProblems,
   getStudentState,
   login,
+  PracticeCheck,
   PracticeProblem,
   recordRetention,
   recordTransfer,
@@ -58,8 +59,8 @@ export function App() {
     }
   }
 
-  async function practiceCheck(problemId: string, answer: string): Promise<string> {
-    if (!authToken) return "undecidable";
+  async function practiceCheck(problemId: string, answer: string): Promise<PracticeCheck> {
+    if (!authToken) return { checkResult: "undecidable", errorTag: null };
     return checkPractice(fetch, { problemId, answer, authToken });
   }
 

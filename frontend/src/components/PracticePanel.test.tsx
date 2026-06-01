@@ -38,7 +38,7 @@ describe("PracticePanel", () => {
   }
 
   it("lists practice prompts and grades an answer via the supplied checker", async () => {
-    const onCheck = vi.fn().mockResolvedValue("correct");
+    const onCheck = vi.fn().mockResolvedValue({ checkResult: "correct", errorTag: null });
     const container = render(<PracticePanel problems={PROBLEMS} onCheck={onCheck} />);
 
     expect(container.textContent).toContain("For y = 2x + 1, find y when x = 3.");
@@ -52,6 +52,19 @@ describe("PracticePanel", () => {
 
     expect(onCheck).toHaveBeenCalledWith("candidate:lin_evaluate:0", "7");
     expect(container.textContent).toContain("Correct");
+  });
+
+  it("shows a targeted misconception hint on a recognised wrong answer", async () => {
+    const onCheck = vi.fn().mockResolvedValue({ checkResult: "incorrect", errorTag: "inverted_slope" });
+    const container = render(<PracticePanel problems={PROBLEMS} onCheck={onCheck} />);
+
+    const input = container.querySelector("input") as HTMLInputElement;
+    await act(async () => setValue(input, "1/2"));
+    await act(async () => {
+      Array.from(container.querySelectorAll("button")).find((b) => b.textContent === "Check")?.click();
+    });
+
+    expect(container.textContent).toContain("rise and run are swapped");
   });
 
   it("renders an empty-state message when there is no practice", () => {

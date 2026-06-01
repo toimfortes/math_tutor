@@ -153,10 +153,12 @@ export async function getPracticeProblems(fetcher: FetchLike, authToken: string)
   }));
 }
 
+export type PracticeCheck = { checkResult: string; errorTag: string | null };
+
 export async function checkPractice(
   fetcher: FetchLike,
   params: { problemId: string; answer: string; authToken: string },
-): Promise<string> {
+): Promise<PracticeCheck> {
   const response = await fetcher("/api/practice/check", {
     method: "POST",
     headers: { "content-type": "application/json", ...authHeaders(params.authToken) },
@@ -165,7 +167,8 @@ export async function checkPractice(
   if (!response.ok) {
     throw new Error(`Request failed: ${response.status}`);
   }
-  return (await response.json()).check_result as string;
+  const raw = await response.json();
+  return { checkResult: raw.check_result, errorTag: raw.diagnostic?.student_error_tag ?? null };
 }
 
 export async function submitTurn(
