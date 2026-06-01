@@ -32,6 +32,20 @@ def test_unknown_theme_returns_400():
     assert response.json()["detail"] == "unknown theme"
 
 
+def test_empty_request_identifiers_return_422():
+    client = TestClient(create_app(Settings.from_env({})))
+
+    empty_student = client.post("/session/start", json={"student_id": " ", "theme": "neutral"})
+    empty_theme = client.post("/session/start", json={"student_id": "stu", "theme": " "})
+    empty_turn = client.post("/turn", json={"session_id": " ", "idempotency_key": "k", "answer": "1"})
+    empty_answer = client.post("/turn", json={"session_id": "s", "idempotency_key": "k", "answer": " "})
+
+    assert empty_student.status_code == 422
+    assert empty_theme.status_code == 422
+    assert empty_turn.status_code == 422
+    assert empty_answer.status_code == 422
+
+
 def test_stale_write_returns_409(monkeypatch):
     app = create_app(Settings.from_env({}))
     client = TestClient(app)

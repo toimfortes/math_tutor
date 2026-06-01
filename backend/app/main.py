@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, StringConstraints
 
 from backend.app.api_models import SkillStateModel, TurnResponseModel
 from backend.app.config import Settings
@@ -23,26 +25,29 @@ from backend.app.services.turn import (
 )
 
 
+NonEmptyStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+
 class StartSessionRequest(BaseModel):
-    student_id: str
-    theme: str = "neutral"
+    student_id: NonEmptyStr
+    theme: NonEmptyStr = "neutral"
 
 
 class TurnRequest(BaseModel):
-    session_id: str
-    idempotency_key: str
-    answer: str
+    session_id: NonEmptyStr
+    idempotency_key: NonEmptyStr
+    answer: NonEmptyStr
 
 
 class SkipRequest(BaseModel):
-    session_id: str
-    reason: str = "stuck"
+    session_id: NonEmptyStr
+    reason: NonEmptyStr = "stuck"
 
 
 class AssessmentRequest(BaseModel):
-    session_id: str
-    skill_id: str
-    context_key: str
+    session_id: NonEmptyStr
+    skill_id: NonEmptyStr
+    context_key: NonEmptyStr
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
