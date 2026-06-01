@@ -330,8 +330,10 @@ class TurnService:
         self.store.save(state)
         return self.skill_state(session_id, skill_id=skill_id)
 
-    def skill_state(self, session_id: str, *, skill_id: str) -> SkillState:
+    def skill_state(self, session_id: str, *, skill_id: str, student_id: str | None = None) -> SkillState:
         state = self._load(session_id)
+        if student_id is not None and state.student_id != student_id:
+            raise SessionNotFoundError(session_id)
         attempts = [attempt for attempt in state.attempts if attempt.skill_id == skill_id]
         return SkillState(
             skill_id=skill_id,

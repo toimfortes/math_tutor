@@ -23,6 +23,18 @@ def test_unknown_session_state_returns_404():
     assert response.status_code == 404
 
 
+def test_student_state_requires_matching_session_owner():
+    client = TestClient(create_app(Settings.from_env({})))
+    start = client.post("/session/start", json={"student_id": "alice", "theme": "neutral"}).json()
+
+    response = client.get(
+        "/student/bob/state",
+        params={"session_id": start["session_id"], "skill_id": start["public_problem"]["skill_id"]},
+    )
+
+    assert response.status_code == 404
+
+
 def test_unknown_theme_returns_400():
     client = TestClient(create_app(Settings.from_env({})))
 

@@ -147,7 +147,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/student/{student_id}/state", response_model=SkillStateModel)
     def get_student_state(student_id: str, session_id: str, skill_id: str) -> dict:
-        return _skill_state_to_dict(turn_service.skill_state(session_id, skill_id=skill_id))
+        return _skill_state_to_dict(turn_service.skill_state(session_id, skill_id=skill_id, student_id=student_id))
 
     return app
 
