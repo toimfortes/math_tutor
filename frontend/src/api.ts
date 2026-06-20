@@ -79,6 +79,7 @@ export type TurnResponse = {
   proposedHintLevel: number;
   guardrailFires: string[];
   diagnostic: Diagnostic | null;
+  token: string | null;
 };
 
 export type SkillState = {
@@ -92,62 +93,142 @@ export type SkillState = {
 
 type FetchLike = typeof fetch;
 
+export async function registerAccount(
+  fetcher: FetchLike,
+  params: { studentId: string; password: string },
+): Promise<void> {
+  const response = await fetcher("/api/auth/register", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ student_id: params.studentId, password: params.password }),
+  });
+  // 409 = the account already exists; 429 = registration is rate-limited. Neither is
+  // fatal to sign-in: registration and login have independent rate-limit buckets, so the
+  // caller can still log in (an existing user must not be blocked because the register
+  // bucket is throttled). A genuine login failure surfaces from login() itself.
+  if (!response.ok && response.status !== 409 && response.status !== 429) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+}
+
+export async function login(
+  fetcher: FetchLike,
+  params: { studentId: string; password: string },
+): Promise<string> {
+  const response = await fetcher("/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ student_id: params.studentId, password: params.password }),
+  });
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+  return (await response.json()).auth_token as string;
+}
+
 export async function startSession(
   fetcher: FetchLike,
-  params: { studentId: string; theme: string },
+  params: { theme: string; authToken: string },
 ): Promise<TurnResponse> {
-  return postJson(fetcher, "/api/session/start", {
-    student_id: params.studentId,
-    theme: params.theme,
+  return postTurnJson(fetcher, "/api/session/start", { theme: params.theme }, params.authToken);
+}
+
+export type PracticeProblem = {
+  id: string;
+  skillId: string;
+  prompt: string;
+  answerType: string;
+  representations: string[];
+  difficulty: number;
+  review: boolean;
+};
+
+export async function getPracticeProblems(fetcher: FetchLike, authToken: string): Promise<PracticeProblem[]> {
+  const response = await fetcher("/api/practice/problems", { method: "GET", headers: authHeaders(authToken) });
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+  const raw = await response.json();
+  return (raw.problems ?? []).map((problem: any) => ({
+    id: problem.id,
+    skillId: problem.skill_id,
+    prompt: problem.prompt,
+    answerType: problem.answer_type,
+    representations: problem.representations ?? [],
+    difficulty: problem.difficulty ?? 3,
+    review: problem.review ?? false,
+  }));
+}
+
+export type PracticeCheck = { checkResult: string; errorTag: string | null };
+
+export async function checkPractice(
+  fetcher: FetchLike,
+  params: { problemId: string; answer: string; authToken: string },
+): Promise<PracticeCheck> {
+  const response = await fetcher("/api/practice/check", {
+    method: "POST",
+    headers: { "content-type": "application/json", ...authHeaders(params.authToken) },
+    body: JSON.stringify({ problem_id: params.problemId, answer: params.answer }),
   });
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+  const raw = await response.json();
+  return { checkResult: raw.check_result, errorTag: raw.diagnostic?.student_error_tag ?? null };
 }
 
 export async function submitTurn(
   fetcher: FetchLike,
-  params: { sessionId: string; idempotencyKey: string; answer: string },
+  params: { sessionId: string; idempotencyKey: string; answer: string; token: string },
 ): Promise<TurnResponse> {
-  return postJson(fetcher, "/api/turn", {
-    session_id: params.sessionId,
-    idempotency_key: params.idempotencyKey,
-    answer: params.answer,
-  });
+  return postTurnJson(
+    fetcher,
+    "/api/turn",
+    { session_id: params.sessionId, idempotency_key: params.idempotencyKey, answer: params.answer },
+    params.token,
+  );
 }
 
 export async function skipProblem(
   fetcher: FetchLike,
-  params: { sessionId: string; reason: string },
+  params: { sessionId: string; reason: string; token: string },
 ): Promise<TurnResponse> {
-  return postTurnJson(fetcher, "/api/session/skip", {
-    session_id: params.sessionId,
-    reason: params.reason,
-  });
+  return postTurnJson(
+    fetcher,
+    "/api/session/skip",
+    { session_id: params.sessionId, reason: params.reason },
+    params.token,
+  );
 }
 
 export async function recordTransfer(
   fetcher: FetchLike,
-  params: { sessionId: string; skillId: string; contextKey: string },
+  params: { sessionId: string; skillId: string; contextKey: string; token: string },
 ): Promise<SkillState> {
-  return postSkillStateJson(fetcher, "/api/assessment/transfer", {
-    session_id: params.sessionId,
-    skill_id: params.skillId,
-    context_key: params.contextKey,
-  });
+  return postSkillStateJson(
+    fetcher,
+    "/api/assessment/transfer",
+    { session_id: params.sessionId, skill_id: params.skillId, context_key: params.contextKey },
+    params.token,
+  );
 }
 
 export async function recordRetention(
   fetcher: FetchLike,
-  params: { sessionId: string; skillId: string; contextKey: string },
+  params: { sessionId: string; skillId: string; contextKey: string; token: string },
 ): Promise<SkillState> {
-  return postSkillStateJson(fetcher, "/api/assessment/retention", {
-    session_id: params.sessionId,
-    skill_id: params.skillId,
-    context_key: params.contextKey,
-  });
+  return postSkillStateJson(
+    fetcher,
+    "/api/assessment/retention",
+    { session_id: params.sessionId, skill_id: params.skillId, context_key: params.contextKey },
+    params.token,
+  );
 }
 
 export async function getStudentState(
   fetcher: FetchLike,
-  params: { studentId: string; sessionId: string; skillId: string },
+  params: { studentId: string; sessionId: string; skillId: string; token: string },
 ): Promise<SkillState> {
   const query = new URLSearchParams({
     session_id: params.sessionId,
@@ -155,6 +236,7 @@ export async function getStudentState(
   });
   const response = await fetcher(`/api/student/${params.studentId}/state?${query.toString()}`, {
     method: "GET",
+    headers: authHeaders(params.token),
   });
   if (!response.ok) {
     throw new Error(`Request failed: ${response.status}`);
@@ -162,14 +244,14 @@ export async function getStudentState(
   return toSkillState(await response.json());
 }
 
-async function postJson(fetcher: FetchLike, url: string, body: unknown): Promise<TurnResponse> {
-  return postTurnJson(fetcher, url, body);
+function authHeaders(token?: string): Record<string, string> {
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-async function postTurnJson(fetcher: FetchLike, url: string, body: unknown): Promise<TurnResponse> {
+async function postTurnJson(fetcher: FetchLike, url: string, body: unknown, token?: string): Promise<TurnResponse> {
   const response = await fetcher(url, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...authHeaders(token) },
     body: JSON.stringify(body),
   });
   if (!response.ok) {
@@ -178,10 +260,10 @@ async function postTurnJson(fetcher: FetchLike, url: string, body: unknown): Pro
   return toTurnResponse(await response.json());
 }
 
-async function postSkillStateJson(fetcher: FetchLike, url: string, body: unknown): Promise<SkillState> {
+async function postSkillStateJson(fetcher: FetchLike, url: string, body: unknown, token?: string): Promise<SkillState> {
   const response = await fetcher(url, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...authHeaders(token) },
     body: JSON.stringify(body),
   });
   if (!response.ok) {
@@ -228,6 +310,7 @@ function toTurnResponse(raw: WireTurn): TurnResponse {
           safeHintLevelCap: raw.diagnostic.safe_hint_level_cap,
         }
       : null,
+    token: raw.token ?? null,
   };
 }
 

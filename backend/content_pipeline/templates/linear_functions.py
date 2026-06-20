@@ -132,20 +132,37 @@ def solve_case(template_case: LinearTemplateCase) -> str:
 
 
 def known_wrong_answers(template_case: LinearTemplateCase) -> dict[str, str]:
-    if template_case.kind not in {"rate_between_points", "slope_two_points", "rise_run"}:
-        return {}
+    kind = template_case.kind
+    params = template_case.params
 
-    if template_case.kind == "rise_run":
-        correct = Fraction(template_case.params["rise"], template_case.params["run"])
-    else:
-        correct = _slope(template_case.params)
+    if kind in {"rate_between_points", "slope_two_points", "rise_run"}:
+        correct = Fraction(params["rise"], params["run"]) if kind == "rise_run" else _slope(params)
+        distractors = {"sign_error": _format_fraction(-correct)}
+        if correct:
+            distractors["inverted_slope"] = _format_fraction(1 / correct)
+        return distractors
 
-    distractors = {
-        "sign_error": _format_fraction(-correct),
-    }
-    if correct:
-        distractors["inverted_slope"] = _format_fraction(1 / correct)
-    return distractors
+    # evaluating y = mx + b but forgetting to add the intercept
+    if kind == "evaluate_y" and {"m", "x"} <= params.keys():
+        return {"forgot_intercept": _format_fraction(Fraction(params["m"]) * Fraction(params["x"]))}
+
+    # reading the y-intercept of y = mx + b but giving the slope instead
+    if kind == "intercept_equation" and "m" in params:
+        return {"slope_for_intercept": _format_fraction(Fraction(params["m"]))}
+
+    # interpreting the rate of change but giving the intercept instead
+    if kind == "interpret_slope" and "b" in params:
+        return {"intercept_for_slope": _format_fraction(Fraction(params["b"]))}
+
+    # writing y = mx + b but swapping the slope and intercept positions
+    if kind == "slope_intercept_equation" and {"m", "b", "var"} <= params.keys():
+        return {
+            "swapped_slope_intercept": _format_linear_expression(
+                Fraction(params["b"]), Fraction(params["m"]), params["var"]
+            )
+        }
+
+    return {}
 
 
 def _slope(params: dict[str, Any]) -> Fraction:

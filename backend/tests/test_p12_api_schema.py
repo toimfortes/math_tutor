@@ -36,9 +36,9 @@ def test_public_problem_schema_documents_representation_payloads():
         assert field in public_problem_props
 
 
-def test_turn_endpoint_still_returns_the_expected_shape():
+def test_turn_endpoint_still_returns_the_expected_shape(login):
     client = TestClient(create_app(Settings.from_env({})))
-    start = client.post("/session/start", json={"student_id": "stu", "theme": "space_logistics"}).json()
+    start = client.post("/session/start", json={"theme": "space_logistics"}, headers=login(client)).json()
 
     assert set(start) >= {"session_id", "public_problem", "dialogue", "check_result", "xp_awarded"}
     assert set(start["public_problem"]) >= {"ref", "skill_id", "representations", "prompt", "hint_scaffold"}

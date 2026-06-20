@@ -1,10 +1,26 @@
-import { ArrowRight, BadgeCheck, CalendarCheck2, CheckCircle2, CircleAlert, FastForward, RotateCcw, Send } from "lucide-react";
+import { ArrowRight, BadgeCheck, CalendarCheck2, CheckCircle2, CircleAlert, Dumbbell, FastForward, LogIn, RotateCcw, Send } from "lucide-react";
 import { FormEvent, useState } from "react";
-import { getStudentState, recordRetention, recordTransfer, SkillState, skipProblem, startSession, submitTurn, TurnResponse } from "./api";
+import {
+  checkPractice,
+  getPracticeProblems,
+  getStudentState,
+  login,
+  PracticeCheck,
+  PracticeProblem,
+  recordRetention,
+  recordTransfer,
+  registerAccount,
+  SkillState,
+  skipProblem,
+  startSession,
+  submitTurn,
+  TurnResponse,
+} from "./api";
 import { hintForLevel } from "./hints";
 import { ChatPanel } from "./components/ChatPanel";
 import { GraphView } from "./components/GraphView";
 import { GridView } from "./components/GridView";
+import { PracticePanel } from "./components/PracticePanel";
 import { TableView } from "./components/TableView";
 
 const THEMES = [
@@ -12,8 +28,6 @@ const THEMES = [
   { value: "drone_physics", label: "Drone Motion" },
   { value: "neutral", label: "Neutral" },
 ];
-
-const STUDENT_ID = "local-student";
 
 export function App() {
   const [theme, setTheme] = useState("space_logistics");
@@ -24,26 +38,72 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [turnCount, setTurnCount] = useState(0);
   const [totalXp, setTotalXp] = useState(0);
+  const [token, setToken] = useState<string | null>(null);
+  const [studentId, setStudentId] = useState("");
+  const [password, setPassword] = useState("");
+  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [practiceMode, setPracticeMode] = useState(false);
+  const [practiceProblems, setPracticeProblems] = useState<PracticeProblem[]>([]);
 
-  async function loadSkillState(nextTurn: TurnResponse) {
+  async function enterPractice() {
+    if (!authToken) return;
+    setBusy(true);
+    setError(null);
+    try {
+      setPracticeProblems(await getPracticeProblems(fetch, authToken));
+      setPracticeMode(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load practice");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function practiceCheck(problemId: string, answer: string): Promise<PracticeCheck> {
+    if (!authToken) return { checkResult: "undecidable", errorTag: null };
+    return checkPractice(fetch, { problemId, answer, authToken });
+  }
+
+  async function signIn(event: FormEvent) {
+    event.preventDefault();
+    if (!studentId.trim() || !password) return;
+    setBusy(true);
+    setError(null);
+    try {
+      // Create the account if it is new, then log in either way.
+      await registerAccount(fetch, { studentId: studentId.trim(), password });
+      const nextAuthToken = await login(fetch, { studentId: studentId.trim(), password });
+      setAuthToken(nextAuthToken);
+      await begin(theme, nextAuthToken);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to sign in");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function loadSkillState(nextTurn: TurnResponse, sessionToken: string) {
     const nextState = await getStudentState(fetch, {
-      studentId: STUDENT_ID,
+      studentId: studentId.trim(),
       sessionId: nextTurn.sessionId,
       skillId: nextTurn.publicProblem.skillId,
+      token: sessionToken,
     });
     setSkillState(nextState);
   }
 
-  async function begin(selectedTheme = theme) {
+  async function begin(selectedTheme = theme, auth = authToken) {
+    if (!auth) return;
     setBusy(true);
     setError(null);
     try {
-      const next = await startSession(fetch, { studentId: STUDENT_ID, theme: selectedTheme });
+      const next = await startSession(fetch, { theme: selectedTheme, authToken: auth });
       setTurn(next);
+      setToken(next.token);
       setAnswer("");
       setTurnCount(0);
       setTotalXp(next.xpAwarded);
-      await loadSkillState(next);
+      await loadSkillState(next, next.token ?? "");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to start");
     } finally {
@@ -53,7 +113,7 @@ export function App() {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!turn || !answer.trim()) return;
+    if (!turn || !token || !answer.trim()) return;
     setBusy(true);
     setError(null);
     try {
@@ -62,12 +122,13 @@ export function App() {
         sessionId: turn.sessionId,
         idempotencyKey: `local-${nextCount}`,
         answer: answer.trim(),
+        token,
       });
       setTurn(next);
       setTurnCount(nextCount);
       setTotalXp((current) => current + next.xpAwarded);
       setAnswer("");
-      await loadSkillState(next);
+      await loadSkillState(next, token);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to submit");
     } finally {
@@ -76,14 +137,14 @@ export function App() {
   }
 
   async function skipCurrentProblem() {
-    if (!turn) return;
+    if (!turn || !token) return;
     setBusy(true);
     setError(null);
     try {
-      const next = await skipProblem(fetch, { sessionId: turn.sessionId, reason: "student_requested" });
+      const next = await skipProblem(fetch, { sessionId: turn.sessionId, reason: "student_requested", token });
       setTurn(next);
       setAnswer("");
-      await loadSkillState(next);
+      await loadSkillState(next, token);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to skip");
     } finally {
@@ -92,7 +153,7 @@ export function App() {
   }
 
   async function recordAssessment(kind: "transfer" | "retention") {
-    if (!turn) return;
+    if (!turn || !token) return;
     setBusy(true);
     setError(null);
     const contextKey = `${turn.publicProblem.ref.realizationKey}:${kind}`;
@@ -103,11 +164,13 @@ export function App() {
               sessionId: turn.sessionId,
               skillId: turn.publicProblem.skillId,
               contextKey,
+              token,
             })
           : await recordRetention(fetch, {
               sessionId: turn.sessionId,
               skillId: turn.publicProblem.skillId,
               contextKey,
+              token,
             });
       setSkillState(nextState);
     } catch (err) {
@@ -115,6 +178,40 @@ export function App() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (!authToken) {
+    return (
+      <main className="login-shell">
+        <form className="login-card" onSubmit={(event) => void signIn(event)}>
+          <p className="eyebrow">Gold slice</p>
+          <h1>Linear Functions Tutor</h1>
+          <label className="field">
+            <span>Student ID</span>
+            <input
+              value={studentId}
+              onChange={(event) => setStudentId(event.target.value)}
+              placeholder="e.g. ada"
+              autoComplete="username"
+            />
+          </label>
+          <label className="field">
+            <span>Password</span>
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="current-password"
+            />
+          </label>
+          <button className="primary" type="submit" disabled={busy || !studentId.trim() || !password}>
+            <LogIn size={18} />
+            Sign in
+          </button>
+          {error ? <p className="error">{error}</p> : null}
+        </form>
+      </main>
+    );
   }
 
   return (
@@ -144,6 +241,15 @@ export function App() {
           <RotateCcw size={18} />
           Start
         </button>
+        <button
+          className="secondary"
+          type="button"
+          onClick={() => (practiceMode ? setPracticeMode(false) : void enterPractice())}
+          disabled={busy}
+        >
+          <Dumbbell size={18} />
+          {practiceMode ? "Back to tutor" : "Extra practice"}
+        </button>
         <div className="stat-row">
           <span>XP</span>
           <strong>{totalXp}</strong>
@@ -152,7 +258,17 @@ export function App() {
       </aside>
 
       <section className="workspace">
-        {turn ? (
+        {practiceMode ? (
+          <>
+            <header className="problem-header">
+              <div>
+                <p className="eyebrow">Extra practice</p>
+                <h2>Generated practice problems</h2>
+              </div>
+            </header>
+            <PracticePanel problems={practiceProblems} onCheck={practiceCheck} />
+          </>
+        ) : turn ? (
           <>
             <header className="problem-header">
               <div>

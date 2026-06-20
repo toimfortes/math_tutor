@@ -2,6 +2,21 @@ from backend.app.content.seed_loader import RealizedProblemRef, load_gold_proble
 from backend.app.domain.scheduler import RoundRobinScheduler
 
 
+def test_next_ref_interleaves_skills_rather_than_blocking():
+    bank = load_gold_problem_bank()
+    scheduler = RoundRobinScheduler(bank)
+
+    sequence = [scheduler.first_ref(theme="space_logistics")]
+    for _ in range(20):
+        sequence.append(scheduler.next_ref(sequence[-1], theme="space_logistics"))
+
+    skills = [bank.public_problem(ref).skill_id for ref in sequence]
+    # No two consecutive problems share a skill (interleaving, not blocking).
+    assert all(skills[i] != skills[i + 1] for i in range(len(skills) - 1))
+    # A full pass still covers every skill in the theme.
+    assert set(skills) == {bank.public_problem(ref).skill_id for ref in bank.public_refs()}
+
+
 def test_scheduler_selects_transfer_candidate_from_unseen_context():
     scheduler = RoundRobinScheduler(load_gold_problem_bank())
 

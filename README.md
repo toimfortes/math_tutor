@@ -65,11 +65,15 @@ SESSION_DB_PATH=./sessions.db LLM_PROVIDER=mock \
 
 ## Rate Limiting
 
-Set `RATE_LIMIT_PER_MINUTE` to cap requests to `/session/start` (per student)
-and mutating session endpoints such as `/turn`, `/session/skip`, and
-`/assessment/*` (per session); exceeding it returns HTTP 429. Unset disables
-it. The limiter is per-process and in-memory — a shared backend would be needed
-for a multi-instance deploy.
+Set `RATE_LIMIT_PER_MINUTE` to cap requests to `/session/start` (per student),
+mutating session endpoints such as `/turn`, `/session/skip`, and `/assessment/*`
+(per session), and the credential endpoints `/auth/login` and `/auth/register`
+(per `{client-ip}:{student-id}`, enforced before the credential check so failed
+password guesses count). Exceeding it returns HTTP 429. Unset disables it. The
+limiter is per-process and in-memory — a shared backend (plus trusted client-IP /
+`X-Forwarded-For` handling behind a proxy and a coarser per-IP cap to throttle
+cross-account password spraying) would be needed for a hardened multi-instance
+deploy.
 
 ## LLM Spend Cap
 
@@ -143,3 +147,18 @@ python -m backend.content_pipeline.provenance \
 ```
 
 Live generation and cross-provider extraction remain offline promotion steps, not reproducible CI gates.
+
+### Source ingestion → gated generation → practice pool
+
+`backend/content_pipeline/ingest.py` builds a SQLite content substrate and a separate, gated path for generated content. The runtime gold assessment bank is never altered by this — `export-gold` only emits `curation_status='promoted'` (the frozen 16), and the frozen-bank verifier guards it.
+
+```bash
+python -m backend.content_pipeline.ingest gold --db content.sqlite3                 # gold -> DB
+python -m backend.content_pipeline.ingest oer --db content.sqlite3                  # stage reviewed OER metadata
+python -m backend.content_pipeline.ingest generate-candidates --db content.sqlite3  # gated parametric candidates
+python -m backend.content_pipeline.ingest promote --db content.sqlite3              # re-verify -> 'approved'
+python -m backend.content_pipeline.ingest export-practice --db content.sqlite3 --output practice.json
+python -m backend.content_pipeline.ingest verify-practice --input practice.json     # re-derivation gate
+```
+
+Each generated candidate is validated through the same gates as runtime content (deterministic solver result, code-owned checker round-trip, safety scan, no answer leak). Approved content is exported as a **separate practice pool**, distinct from the frozen gold assessment bank. Set `PRACTICE_BANK_PATH` to serve it via the authenticated `/practice/*` endpoints and the frontend "Extra practice" mode; unset leaves the pool empty. Browser coverage: `cd frontend && npm run e2e`.

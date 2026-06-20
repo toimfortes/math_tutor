@@ -34,6 +34,7 @@ function turnResponse(prompt: string, problemId: string) {
     proposed_hint_level: 0,
     guardrail_fires: [],
     diagnostic: null,
+    token: "tok-s1",
   };
 }
 
@@ -75,6 +76,31 @@ async function typeAnswer(container: HTMLElement, value: string) {
   });
 }
 
+function setInputValue(el: HTMLInputElement, value: string) {
+  const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+  valueSetter?.call(el, value);
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+// Two responses every authenticated flow makes first: register, then login.
+function authMocks(mock: ReturnType<typeof vi.fn>) {
+  return mock
+    .mockReturnValueOnce(jsonResponse({ student_id: "ada" }))
+    .mockReturnValueOnce(jsonResponse({ auth_token: "auth-tok" }));
+}
+
+// Fill the login form and submit it, taking the app from the login gate into the tutor.
+async function signIn(hostEl: HTMLElement) {
+  const inputs = hostEl.querySelectorAll("input");
+  await act(async () => {
+    setInputValue(inputs[0] as HTMLInputElement, "ada");
+    setInputValue(inputs[1] as HTMLInputElement, "pw");
+  });
+  await act(async () => {
+    button(hostEl, "Sign in").click();
+  });
+}
+
 describe("App", () => {
   let root: Root | null = null;
   let host: HTMLDivElement | null = null;
@@ -89,9 +115,31 @@ describe("App", () => {
     vi.restoreAllMocks();
   });
 
-  it("loads skill state and exposes skip, transfer, and retention actions", async () => {
+  it("signs in with valid credentials even when registration is rate-limited (429)", async () => {
+    // Regression: a throttled /auth/register must not block sign-in — login has its own
+    // rate-limit bucket, so a returning user with valid credentials still gets through.
     const fetchMock = vi
       .fn()
+      .mockReturnValueOnce(new Response(null, { status: 429 })) // register -> rate limited
+      .mockReturnValueOnce(jsonResponse({ auth_token: "auth-tok" })) // login -> succeeds
+      .mockReturnValueOnce(jsonResponse(turnResponse("Plot the station at (4, 3).", "lf_p01")))
+      .mockReturnValueOnce(jsonResponse(skillState()));
+    vi.stubGlobal("fetch", fetchMock);
+
+    host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => {
+      root?.render(<App />);
+    });
+    await signIn(host);
+
+    expect(host.textContent).toContain("Plot the station at (4, 3)."); // reached the tutor
+    expect(host.textContent).not.toContain("Request failed"); // no error surfaced
+  });
+
+  it("loads skill state and exposes skip, transfer, and retention actions", async () => {
+    const fetchMock = authMocks(vi.fn())
       .mockReturnValueOnce(jsonResponse(turnResponse("Plot the station at (4, 3).", "lf_p01")))
       .mockReturnValueOnce(jsonResponse(skillState()))
       .mockReturnValueOnce(jsonResponse(turnResponse("Find the slope of this route.", "lf_p02")))
@@ -107,9 +155,7 @@ describe("App", () => {
     await act(async () => {
       root?.render(<App />);
     });
-    await act(async () => {
-      button(host!, "Start").click();
-    });
+    await signIn(host);
 
     expect(host.textContent).toContain("Plot the station at (4, 3).");
     expect(host.textContent).toContain("Transfer Pending");
@@ -172,8 +218,7 @@ describe("App", () => {
       guardrail_fires: [],
       diagnostic: null,
     };
-    const fetchMock = vi
-      .fn()
+    const fetchMock = authMocks(vi.fn())
       .mockReturnValueOnce(jsonResponse(graphTurn))
       .mockReturnValueOnce(jsonResponse(skillState({ skill_id: "lin_slope_from_graph" })));
     vi.stubGlobal("fetch", fetchMock);
@@ -185,9 +230,7 @@ describe("App", () => {
     await act(async () => {
       root?.render(<App />);
     });
-    await act(async () => {
-      button(host!, "Start").click();
-    });
+    await signIn(host!);
 
     expect(host.querySelector("svg.graph-view")).not.toBeNull();
   });
@@ -232,8 +275,7 @@ describe("App", () => {
       guardrail_fires: [],
       diagnostic: null,
     };
-    const fetchMock = vi
-      .fn()
+    const fetchMock = authMocks(vi.fn())
       .mockReturnValueOnce(jsonResponse(pointsTurn))
       .mockReturnValueOnce(jsonResponse(skillState({ skill_id: "lin_slope_two_points" })));
     vi.stubGlobal("fetch", fetchMock);
@@ -245,9 +287,7 @@ describe("App", () => {
     await act(async () => {
       root?.render(<App />);
     });
-    await act(async () => {
-      button(host!, "Start").click();
-    });
+    await signIn(host!);
 
     expect(host.querySelector("svg.graph-view")).not.toBeNull();
   });
@@ -255,8 +295,7 @@ describe("App", () => {
   it("surfaces the hint at the backend-proposed level", async () => {
     const turn = turnResponse("Find the slope of this route.", "lf_p02");
     turn.proposed_hint_level = 2;
-    const fetchMock = vi
-      .fn()
+    const fetchMock = authMocks(vi.fn())
       .mockReturnValueOnce(jsonResponse(turn))
       .mockReturnValueOnce(jsonResponse(skillState()));
     vi.stubGlobal("fetch", fetchMock);
@@ -268,9 +307,7 @@ describe("App", () => {
     await act(async () => {
       root?.render(<App />);
     });
-    await act(async () => {
-      button(host!, "Start").click();
-    });
+    await signIn(host!);
 
     // publicProblem() authors level_2 = "Name the operation." and level_0 differently.
     expect(host.textContent).toContain("Name the operation.");
@@ -289,8 +326,7 @@ describe("App", () => {
       check_result: "incorrect",
       xp_awarded: 1,
     };
-    const fetchMock = vi
-      .fn()
+    const fetchMock = authMocks(vi.fn())
       .mockReturnValueOnce(jsonResponse(startTurn))
       .mockReturnValueOnce(jsonResponse(skillState()))
       .mockReturnValueOnce(jsonResponse(correctTurn))
@@ -306,9 +342,7 @@ describe("App", () => {
     await act(async () => {
       root?.render(<App />);
     });
-    await act(async () => {
-      button(host!, "Start").click();
-    });
+    await signIn(host!);
     await typeAnswer(host!, "(4, 3)");
     await act(async () => {
       submitButton(host!).click();
@@ -320,6 +354,40 @@ describe("App", () => {
       submitButton(host!).click();
     });
     expect(host.textContent).toContain("XP9");
+  });
+
+  it("enters the separate extra-practice pool", async () => {
+    const practiceProblems = {
+      problems: [
+        {
+          id: "candidate:lin_evaluate:0",
+          skill_id: "lin_evaluate",
+          prompt: "For y = 2x + 1, find y when x = 3.",
+          answer_type: "numeric",
+          representations: ["text"],
+        },
+      ],
+    };
+    const fetchMock = authMocks(vi.fn())
+      .mockReturnValueOnce(jsonResponse(turnResponse("Plot the station at (4, 3).", "lf_p01")))
+      .mockReturnValueOnce(jsonResponse(skillState()))
+      .mockReturnValueOnce(jsonResponse(practiceProblems));
+    vi.stubGlobal("fetch", fetchMock);
+
+    host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+
+    await act(async () => {
+      root?.render(<App />);
+    });
+    await signIn(host);
+    await act(async () => {
+      button(host!, "Extra practice").click();
+    });
+
+    expect(host.textContent).toContain("Generated practice problems");
+    expect(host.textContent).toContain("For y = 2x + 1, find y when x = 3.");
   });
 
   it("renders an empty grid for plot-a-point problems", async () => {
@@ -352,8 +420,7 @@ describe("App", () => {
       guardrail_fires: [],
       diagnostic: null,
     };
-    const fetchMock = vi
-      .fn()
+    const fetchMock = authMocks(vi.fn())
       .mockReturnValueOnce(jsonResponse(gridTurn))
       .mockReturnValueOnce(jsonResponse(skillState({ skill_id: "coord_plane_basics" })));
     vi.stubGlobal("fetch", fetchMock);
@@ -365,9 +432,7 @@ describe("App", () => {
     await act(async () => {
       root?.render(<App />);
     });
-    await act(async () => {
-      button(host!, "Start").click();
-    });
+    await signIn(host!);
 
     expect(host.querySelector("svg.grid-view")).not.toBeNull();
     expect(host.querySelector("svg.grid-view circle")).toBeNull();
@@ -410,8 +475,7 @@ describe("App", () => {
       guardrail_fires: [],
       diagnostic: null,
     };
-    const fetchMock = vi
-      .fn()
+    const fetchMock = authMocks(vi.fn())
       .mockReturnValueOnce(jsonResponse(tableTurn))
       .mockReturnValueOnce(jsonResponse(skillState({ skill_id: "lin_rate_of_change" })));
     vi.stubGlobal("fetch", fetchMock);
@@ -423,9 +487,7 @@ describe("App", () => {
     await act(async () => {
       root?.render(<App />);
     });
-    await act(async () => {
-      button(host!, "Start").click();
-    });
+    await signIn(host!);
 
     expect(host.querySelector("table.data-table")).not.toBeNull();
     expect(host.textContent).toContain("Tanks");

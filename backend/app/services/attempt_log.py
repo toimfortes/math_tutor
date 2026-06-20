@@ -50,3 +50,42 @@ class SqliteAttemptLog:
         )
         columns = [description[0] for description in cursor.description]
         return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+    def mastery_by_skill(self, student_id: str) -> list[tuple[str, float, int]]:
+        """Per-skill mastery signals for a student, CROSS-SESSION: (skill_id, latest
+        correct ts, distinct correct problem count).
+
+        Keyed by `student_id` (not session_id), so mastery demonstrated anywhere — the
+        assessment loop or the practice pool — counts, matching the offline `review_queue`.
+        `COUNT(DISTINCT problem_id)` is the mastery measure (replaying one problem cannot
+        qualify a skill); `MAX(ts)` is the time-defined recency `review_due` expects.
+        `ts`/`problem_id` are NOT NULL, so these agree with `review_due`'s set-based count.
+        Bounded output: one row per skill, ordered for determinism. Read-only.
+        """
+        cursor = self._conn.execute(
+            "SELECT skill_id, MAX(ts), COUNT(DISTINCT problem_id) FROM attempt_log "
+            "WHERE student_id = ? AND check_result = 'correct' GROUP BY skill_id ORDER BY skill_id",
+            (student_id,),
+        )
+        return [(skill_id, ts, count) for skill_id, ts, count in cursor.fetchall()]
+
+    def recent_decidable_by_problem(self, session_id: str, *, limit: int) -> list[dict]:
+        """Latest decidable attempt per problem — the most recent `limit` DISTINCT
+        problems, in chronological (ascending id) order.
+
+        Deduplication happens in SQL via `MAX(id) ... GROUP BY problem_id` BEFORE the
+        limit, so the cap counts distinct problems: re-attempting one problem cannot
+        flush other problems out of the window (and the latest decidable result wins,
+        landing in that problem's latest chronological slot). Read-only.
+        """
+        cursor = self._conn.execute(
+            "SELECT skill_id, problem_id, check_result FROM attempt_log WHERE id IN ("
+            "  SELECT MAX(id) FROM attempt_log "
+            "  WHERE session_id = ? AND check_result IN ('correct', 'incorrect') "
+            "  GROUP BY problem_id"
+            ") ORDER BY id DESC LIMIT ?",
+            (session_id, limit),
+        )
+        columns = [description[0] for description in cursor.description]
+        rows = list(reversed(cursor.fetchall()))
+        return [dict(zip(columns, row)) for row in rows]

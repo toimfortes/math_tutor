@@ -1,5 +1,41 @@
 import { describe, expect, it, vi } from "vitest";
-import { getStudentState, recordRetention, recordTransfer, skipProblem, startSession, submitTurn } from "./api";
+import { getPracticeProblems, getStudentState, login, recordRetention, recordTransfer, registerAccount, skipProblem, startSession, submitTurn } from "./api";
+
+describe("registerAccount rate-limit tolerance", () => {
+  it("does not throw when registration is rate-limited (429) so the caller can still log in", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(null, { status: 429 }));
+    await expect(registerAccount(fetchMock, { studentId: "ada", password: "pw" })).resolves.toBeUndefined();
+  });
+
+  it("still throws on a genuine error (500)", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(null, { status: 500 }));
+    await expect(registerAccount(fetchMock, { studentId: "ada", password: "pw" })).rejects.toThrow();
+  });
+
+  it("login still surfaces a 429 (its own bucket) as an error", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(null, { status: 429 }));
+    await expect(login(fetchMock, { studentId: "ada", password: "pw" })).rejects.toThrow();
+  });
+});
+
+describe("getPracticeProblems mapping", () => {
+  it("maps review and defaults a missing review key to false", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          problems: [
+            { id: "due", skill_id: "lin_evaluate", prompt: "p", answer_type: "numeric", representations: ["text"], difficulty: 2, review: true },
+            { id: "no-key", skill_id: "lin_evaluate", prompt: "q", answer_type: "numeric", representations: ["text"], difficulty: 2 },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    const problems = await getPracticeProblems(fetchMock, "test-token");
+    expect(problems[0].review).toBe(true);
+    expect(problems[1].review).toBe(false); // missing key -> coerced false
+  });
+});
 
 function problem(prompt: string, problemId: string) {
   return {
@@ -69,7 +105,7 @@ describe("tutor API client", () => {
       .fn()
       .mockResolvedValueOnce(new Response(JSON.stringify(turnPayload(graphProblem())), { status: 200 }));
 
-    const started = await startSession(fetchMock, { studentId: "student-1", theme: "neutral" });
+    const started = await startSession(fetchMock, { theme: "neutral", authToken: "test-token" });
 
     const graph = started.publicProblem.graph;
     expect(graph).not.toBeNull();
@@ -88,7 +124,7 @@ describe("tutor API client", () => {
       .fn()
       .mockResolvedValueOnce(new Response(JSON.stringify(turnPayload(problem("Prompt", "lf_p09"))), { status: 200 }));
 
-    const started = await startSession(fetchMock, { studentId: "student-1", theme: "neutral" });
+    const started = await startSession(fetchMock, { theme: "neutral", authToken: "test-token" });
 
     expect(started.publicProblem.graph).toBeNull();
   });
@@ -110,7 +146,7 @@ describe("tutor API client", () => {
       .fn()
       .mockResolvedValueOnce(new Response(JSON.stringify(turnPayload(tableProblem)), { status: 200 }));
 
-    const started = await startSession(fetchMock, { studentId: "student-1", theme: "neutral" });
+    const started = await startSession(fetchMock, { theme: "neutral", authToken: "test-token" });
 
     const table = started.publicProblem.table;
     expect(table).not.toBeNull();
@@ -127,7 +163,7 @@ describe("tutor API client", () => {
       .fn()
       .mockResolvedValueOnce(new Response(JSON.stringify(turnPayload(problem("Prompt", "lf_p09"))), { status: 200 }));
 
-    const started = await startSession(fetchMock, { studentId: "student-1", theme: "neutral" });
+    const started = await startSession(fetchMock, { theme: "neutral", authToken: "test-token" });
 
     expect(started.publicProblem.table).toBeNull();
   });
@@ -142,7 +178,7 @@ describe("tutor API client", () => {
       .fn()
       .mockResolvedValueOnce(new Response(JSON.stringify(turnPayload(gridProblem)), { status: 200 }));
 
-    const started = await startSession(fetchMock, { studentId: "student-1", theme: "neutral" });
+    const started = await startSession(fetchMock, { theme: "neutral", authToken: "test-token" });
 
     const grid = started.publicProblem.grid;
     expect(grid).not.toBeNull();
@@ -156,7 +192,7 @@ describe("tutor API client", () => {
       .fn()
       .mockResolvedValueOnce(new Response(JSON.stringify(turnPayload(problem("Prompt", "lf_p09"))), { status: 200 }));
 
-    const started = await startSession(fetchMock, { studentId: "student-1", theme: "neutral" });
+    const started = await startSession(fetchMock, { theme: "neutral", authToken: "test-token" });
 
     expect(started.publicProblem.grid).toBeNull();
   });
@@ -197,11 +233,12 @@ describe("tutor API client", () => {
         ),
       );
 
-    const started = await startSession(fetchMock, { studentId: "student-1", theme: "space_logistics" });
+    const started = await startSession(fetchMock, { theme: "space_logistics", authToken: "test-token" });
     const turn = await submitTurn(fetchMock, {
       sessionId: started.sessionId,
       idempotencyKey: "turn-1",
       answer: "(4, 3)",
+      token: "test-token",
     });
 
     expect(started.publicProblem.prompt).toBe("Prompt");
@@ -210,6 +247,21 @@ describe("tutor API client", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/session/start",
       expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("sends the bearer token on authenticated requests", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(turnPayload(problem("Next", "lf_p02"))), { status: 200 }));
+
+    await submitTurn(fetchMock, { sessionId: "s1", idempotencyKey: "t1", answer: "1", token: "abc123" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/turn",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer abc123" }),
+      }),
     );
   });
 
@@ -244,21 +296,24 @@ describe("tutor API client", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify(skillState), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify(skillState), { status: 200 }));
 
-    const skipped = await skipProblem(fetchMock, { sessionId: "s1", reason: "stuck" });
+    const skipped = await skipProblem(fetchMock, { sessionId: "s1", reason: "stuck", token: "test-token" });
     const transfer = await recordTransfer(fetchMock, {
       sessionId: "s1",
       skillId: "lin_plot_point",
       contextKey: "drone_physics:word",
+      token: "test-token",
     });
     const retention = await recordRetention(fetchMock, {
       sessionId: "s1",
       skillId: "lin_plot_point",
       contextKey: "space_logistics:delayed",
+      token: "test-token",
     });
     const state = await getStudentState(fetchMock, {
       studentId: "student-1",
       sessionId: "s1",
       skillId: "lin_plot_point",
+      token: "test-token",
     });
 
     expect(skipped.publicProblem.ref.problemId).toBe("lf_p02");
